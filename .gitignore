@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+*.log
+.venv
+__pycache__/
+*.py[cod]
+.python-version
+
+# Lease analysis Groq/OCR debug dumps (see LEASE_ANALYSIS_TRACE_FILES)
+debug/
