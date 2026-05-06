@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
+import { LeaseModule } from './lease/lease.module';
 import { OcrWarmupService } from './ocr/ocr-warmup.service';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { PropertyModule } from './property/property.module';
 
 @Module({
   imports: [
@@ -15,6 +17,8 @@ import { PortfolioModule } from './portfolio/portfolio.module';
       }),
     }),
     PortfolioModule,
+    PropertyModule,
+    LeaseModule,
     LeaseAnalysisModule,
   ],
   providers: [OcrWarmupService],

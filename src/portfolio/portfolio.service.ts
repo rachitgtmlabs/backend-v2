@@ -54,6 +54,23 @@ export class PortfolioService {
     return this.toResponse(doc);
   }
 
+  async findAll() {
+    const docs = await this.portfolioModel
+      .find()
+      .sort({ createdAt: -1 })
+      .exec();
+    return {
+      portfolios: docs.map((doc) => this.toResponse(doc).portfolio),
+    };
+  }
+
+  async existsByPortfolioId(portfolioId: string): Promise<boolean> {
+    const n = await this.portfolioModel
+      .countDocuments({ portfolioId })
+      .exec();
+    return n > 0;
+  }
+
   private toResponse(doc: PortfolioDocumentModel) {
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;

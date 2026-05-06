@@ -1,6 +1,8 @@
 node_modules
 dist
 .env
+# GCP service account JSON downloads (never commit). Use GOOGLE_APPLICATION_CREDENTIALS or .env GCS_* vars.
+*-????????????.json
 *.log
 .venv
 __pycache__/

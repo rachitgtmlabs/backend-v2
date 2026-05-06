@@ -10,5 +10,6 @@ import { Portfolio, PortfolioSchema } from './schemas/portfolio.schema';
   ],
   controllers: [PortfolioController],
   providers: [PortfolioService],
+  exports: [PortfolioService],
 })
 export class PortfolioModule {}
