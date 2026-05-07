@@ -35,6 +35,13 @@ export class OcrExtractionBridgeService {
     return 900_000;
   }
 
+  /** Resolve uv binary: prefer UV_PATH env var, then /usr/local/bin/uv, then fallback to 'uv' on PATH */
+  private resolveUvBin(): string {
+    const fromEnv = this.config.get<string>('UV_PATH');
+    if (fromEnv) return fromEnv;
+    return '/usr/local/bin/uv';
+  }
+
   /**
    * Writes PDF bytes to a temp file and runs OCR. Cleans up the temp directory.
    */
@@ -70,17 +77,18 @@ export class OcrExtractionBridgeService {
   private runUvPythonScript(args: string[]): Promise<string> {
     const timeoutMs = this.ocrSubprocessTimeoutMs();
     const startedAt = Date.now();
+    const uvBin = this.resolveUvBin();
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       const errChunks: Buffer[] = [];
 
       this.logger.log(
-        `OCR subprocess starting (uv run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
+        `OCR subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
       );
 
       const child: ChildProcess = spawn(
-        'uv',
+        uvBin,
         ['run', 'python', this.scriptPath, ...args],
         {
           cwd: this.projectRoot,
@@ -116,7 +124,7 @@ export class OcrExtractionBridgeService {
         clearTimeout(killTimer);
         reject(
           new Error(
-            `Failed to spawn OCR (is uv on PATH?). ${err.message}`,
+            `Failed to spawn OCR (is uv on PATH? tried: ${uvBin}). ${err.message}`,
           ),
         );
       });
