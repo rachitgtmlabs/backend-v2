@@ -21,6 +21,6 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY public ./public
 
-EXPOSE 3001
+EXPOSE 8080
 
 CMD ["node", "dist/main.js"]
