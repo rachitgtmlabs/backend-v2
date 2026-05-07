@@ -17,6 +17,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PATH="/root/.local/bin:$PATH"
 
+# Install Python + curl
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -25,8 +26,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# Copy Python files and install dependencies
+COPY pyproject.toml uv.lock ./
+COPY ocr_extraction.py ./
+RUN uv sync --frozen
+
+# Copy Node app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
