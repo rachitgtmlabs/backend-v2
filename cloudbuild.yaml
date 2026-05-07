@@ -1,0 +1,36 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2:$COMMIT_SHA'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2:latest'
+      - '.'
+
+  # Push both tags
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - '--all-tags'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2'
+
+  # Deploy to Cloud Run automatically
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - backend-v2-git
+      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2:$COMMIT_SHA'
+      - '--region=europe-west1'
+      - '--platform=managed'
+      - '--quiet'
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2:$COMMIT_SHA'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/backend-v2/backend-v2:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
