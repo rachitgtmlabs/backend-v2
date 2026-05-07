@@ -40,10 +40,10 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY public ./public
 COPY ocr_extraction.py ./
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 
-# Pre-install Python deps so uv run doesn't fetch at request time
-RUN uv sync --frozen
+# Resolve and install Python deps from pyproject.toml (no lockfile needed)
+RUN uv sync
 
 EXPOSE 8080
 CMD ["node", "dist/main.js"]
