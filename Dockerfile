@@ -22,8 +22,11 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv directly to /usr/local/bin (no PATH shenanigans)
-RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+# Install uv via pip3 — guaranteed to land in /usr/local/bin/uv
+RUN pip3 install uv --break-system-packages
+
+# Verify uv is callable at the expected path
+RUN uv --version && ls -la $(which uv)
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
