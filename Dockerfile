@@ -7,6 +7,7 @@ COPY nest-cli.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
+
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -38,13 +39,11 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY public ./public
-
-COPY pyproject.toml ./
 COPY ocr_extraction.py ./
+COPY pyproject.toml ./
 
-# Install Python deps (resolves from pyproject.toml, no lockfile required)
-ENV UV_LINK_MODE=copy
-RUN uv sync --no-dev
+# Resolve and install Python deps from pyproject.toml (no lockfile needed)
+RUN uv sync
 
 EXPOSE 8080
 CMD ["node", "dist/main.js"]
