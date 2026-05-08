@@ -8,7 +8,11 @@ export class CreateLeaseDto {
   @IsString()
   property_id: string;
 
-  @IsIn(['draft', 'processed'])  status: 'draft' | 'processed';
+  @IsIn(['draft', 'processed'])
+  status: 'draft' | 'processed';
+
+  @IsIn(['main lease', 'amendment'])
+  document_type: 'main lease' | 'amendment';
 
   @IsString()
   file_name: string;

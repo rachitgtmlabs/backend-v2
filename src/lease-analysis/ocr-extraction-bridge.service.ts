@@ -79,6 +79,32 @@ export class OcrExtractionBridgeService {
         `OCR subprocess starting (uv run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
       );
 
+      // #region agent log
+      void fetch(
+        'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': 'cf65a2',
+          },
+          body: JSON.stringify({
+            sessionId: 'cf65a2',
+            location: 'ocr-extraction-bridge.service.ts:runUvPythonScript',
+            message: 'pre-spawn OCR',
+            data: {
+              hypothesisId: 'H1',
+              cwd: this.projectRoot,
+              pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
+            },
+            timestamp: Date.now(),
+            hypothesisId: 'H1',
+            runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
+          }),
+        },
+      ).catch(() => {});
+      // #endregion
+
       const child: ChildProcess = spawn(
         'uv',
         ['run', 'python', this.scriptPath, ...args],
@@ -114,6 +140,32 @@ export class OcrExtractionBridgeService {
 
       child.on('error', (err) => {
         clearTimeout(killTimer);
+        // #region agent log
+        const ne = err as NodeJS.ErrnoException;
+        void fetch(
+          'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': 'cf65a2',
+            },
+            body: JSON.stringify({
+              sessionId: 'cf65a2',
+              location: 'ocr-extraction-bridge.service.ts:spawn-error',
+              message: 'OCR spawn error',
+              data: {
+                hypothesisId: 'H1',
+                code: ne.code,
+                pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
+              },
+              timestamp: Date.now(),
+              hypothesisId: 'H1',
+              runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
+            }),
+          },
+        ).catch(() => {});
+        // #endregion
         reject(
           new Error(
             `Failed to spawn OCR (is uv on PATH?). ${err.message}`,

@@ -1,22 +1,27 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 
-export type LeaseDocumentModel = HydratedDocument<Lease> & {
+export type AmendmentDocumentModel = HydratedDocument<Amendment> & {
   createdAt: Date;
   updatedAt: Date;
 };
 
-@Schema({ collection: 'leases', timestamps: true })
-export class Lease {
+@Schema({ collection: 'amendments', timestamps: true })
+export class Amendment {
   @Prop({ required: true, unique: true, index: true })
-  leaseId: string;
+  amendmentId: string;
+
+  @Prop({ required: true, index: true })
+  lease_id: string;
+
+  @Prop({ required: true, index: true })
+  version: number;
 
   @Prop({ required: true, index: true })
   portfolio_id: string;
 
-  /** Linked property (e.g. prp_*) under this portfolio. */
-  @Prop({ type: String, index: true, default: null })
-  property_id: string | null;
+  @Prop({ type: String, index: true, required: true })
+  property_id: string;
 
   @Prop({ required: true, enum: ['draft', 'processed'] })
   status: string;
@@ -29,9 +34,10 @@ export class Lease {
 
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   analysis: Record<string, unknown>;
-
-  @Prop({ type: Number, default: 0, index: true })
-  amendment_version: number;
 }
 
-export const LeaseSchema = SchemaFactory.createForClass(Lease);
+export const AmendmentSchema = SchemaFactory.createForClass(Amendment);
+
+// Create compound indexes for optimal querying
+AmendmentSchema.index({ lease_id: 1, version: 1 });
+AmendmentSchema.index({ property_id: 1, portfolio_id: 1 });
