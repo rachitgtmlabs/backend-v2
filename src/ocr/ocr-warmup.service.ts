@@ -13,6 +13,12 @@ export class OcrWarmupService implements OnApplicationBootstrap {
 
   constructor(private readonly config: ConfigService) {}
 
+  /** Resolve uv binary: prefer UV_PATH env var, then /usr/local/bin/uv */
+  private resolveUvBin(): string {
+    const fromEnv = this.config.get<string>('UV_PATH');
+    if (fromEnv) return fromEnv;
+    return '/usr/local/bin/uv';
+  }
   async onApplicationBootstrap(): Promise<void> {
     const skip =
       this.config.get<string>('OCR_SKIP_WARMUP') === '1' ||
@@ -24,9 +30,10 @@ export class OcrWarmupService implements OnApplicationBootstrap {
 
     const root = process.cwd();
     const script = path.join(root, 'ocr_extraction.py');
+    const uvBin = this.resolveUvBin();
 
     await new Promise<void>((resolve) => {
-      const child = spawn('uv', ['run', 'python', script, '--warmup'], {
+      const child = spawn(uvBin, ['run', 'python', script, '--warmup'], {
         cwd: root,
         env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -63,7 +70,7 @@ export class OcrWarmupService implements OnApplicationBootstrap {
         clearTimeout(timer);
         if (err.code === 'ENOENT') {
           this.logger.warn(
-            'Could not run `uv` for OCR warmup. Install uv or set OCR_SKIP_WARMUP=1. ' +
+            `Could not run uv for OCR warmup (tried: ${uvBin}). Install uv or set OCR_SKIP_WARMUP=1. ` +
               err.message,
           );
         } else {

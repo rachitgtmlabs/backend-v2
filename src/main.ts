@@ -20,8 +20,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  const port = process.env.PORT ?? 3001;
-  await app.listen(port);
+  const port = process.env.PORT ?? 8080;
+  await app.listen(port, '0.0.0.0');
 }
 
 bootstrap();

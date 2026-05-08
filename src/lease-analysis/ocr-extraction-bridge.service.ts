@@ -35,6 +35,12 @@ export class OcrExtractionBridgeService {
     return 900_000;
   }
 
+  /** Resolve uv binary: prefer UV_PATH env var, then /usr/local/bin/uv, then fallback to 'uv' on PATH */
+  private resolveUvBin(): string {
+    const fromEnv = this.config.get<string>('UV_PATH');
+    if (fromEnv) return fromEnv;
+    return '/usr/local/bin/uv';
+  }
   /**
    * Writes PDF bytes to a temp file and runs OCR. Cleans up the temp directory.
    */
@@ -70,43 +76,18 @@ export class OcrExtractionBridgeService {
   private runUvPythonScript(args: string[]): Promise<string> {
     const timeoutMs = this.ocrSubprocessTimeoutMs();
     const startedAt = Date.now();
+    const uvBin = this.resolveUvBin();
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       const errChunks: Buffer[] = [];
 
       this.logger.log(
-        `OCR subprocess starting (uv run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
+        `OCR subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
       );
 
-      // #region agent log
-      void fetch(
-        'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': 'cf65a2',
-          },
-          body: JSON.stringify({
-            sessionId: 'cf65a2',
-            location: 'ocr-extraction-bridge.service.ts:runUvPythonScript',
-            message: 'pre-spawn OCR',
-            data: {
-              hypothesisId: 'H1',
-              cwd: this.projectRoot,
-              pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
-            },
-            timestamp: Date.now(),
-            hypothesisId: 'H1',
-            runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
-
       const child: ChildProcess = spawn(
-        'uv',
+        uvBin,
         ['run', 'python', this.scriptPath, ...args],
         {
           cwd: this.projectRoot,
@@ -140,35 +121,9 @@ export class OcrExtractionBridgeService {
 
       child.on('error', (err) => {
         clearTimeout(killTimer);
-        // #region agent log
-        const ne = err as NodeJS.ErrnoException;
-        void fetch(
-          'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Debug-Session-Id': 'cf65a2',
-            },
-            body: JSON.stringify({
-              sessionId: 'cf65a2',
-              location: 'ocr-extraction-bridge.service.ts:spawn-error',
-              message: 'OCR spawn error',
-              data: {
-                hypothesisId: 'H1',
-                code: ne.code,
-                pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
-              },
-              timestamp: Date.now(),
-              hypothesisId: 'H1',
-              runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
         reject(
           new Error(
-            `Failed to spawn OCR (is uv on PATH?). ${err.message}`,
+            `Failed to spawn OCR (is uv on PATH? tried: ${uvBin}). ${err.message}`,
           ),
         );
       });
