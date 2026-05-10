@@ -241,4 +241,73 @@ export class LeaseService {
       },
     };
   }
+
+  /**
+   * All saved main leases + amendments for a portfolio property, grouped by
+   * vault status (processed → active list, draft → draft list).
+   */
+  async listDocumentsForPortfolioProperty(
+    portfolioId: string,
+    propertyId: string,
+  ) {
+    const propertyOk = await this.propertyService.belongsToPortfolio(
+      propertyId,
+      portfolioId,
+    );
+    if (!propertyOk) {
+      throw new NotFoundException(
+        `Property ${propertyId} not found in portfolio ${portfolioId}`,
+      );
+    }
+
+    const [leaseRows, amendmentRows] = await Promise.all([
+      this.leaseModel
+        .find({ portfolio_id: portfolioId, property_id: propertyId })
+        .sort({ updatedAt: -1 })
+        .select(['leaseId', 'file_name', 'status', 'updatedAt'])
+        .lean()
+        .exec(),
+      this.amendmentModel
+        .find({ portfolio_id: portfolioId, property_id: propertyId })
+        .sort({ updatedAt: -1 })
+        .select(['amendmentId', 'file_name', 'status', 'updatedAt'])
+        .lean()
+        .exec(),
+    ]);
+
+    type Item = {
+      id: string;
+      kind: 'lease' | 'amendment';
+      file_name: string;
+      status: string;
+      updated_at: string;
+    };
+
+    const leaseItems: Item[] = leaseRows.map((row) => ({
+      id: row.leaseId,
+      kind: 'lease' as const,
+      file_name: row.file_name,
+      status: row.status,
+      updated_at: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    }));
+
+    const amendmentItems: Item[] = amendmentRows.map((row) => ({
+      id: row.amendmentId,
+      kind: 'amendment' as const,
+      file_name: row.file_name,
+      status: row.status,
+      updated_at: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    }));
+
+    const all = [...leaseItems, ...amendmentItems];
+    const byUpdatedDesc = (a: Item, b: Item) =>
+      b.updated_at.localeCompare(a.updated_at);
+
+    const active = all
+      .filter((i) => i.status === 'processed')
+      .sort(byUpdatedDesc);
+    const draft = all.filter((i) => i.status === 'draft').sort(byUpdatedDesc);
+
+    return { active, draft };
+  }
 }

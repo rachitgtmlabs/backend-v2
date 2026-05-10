@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn, type ChildProcess } from 'node:child_process';
+import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
 export interface OcrExtractionJson {
   full_text: string;
+  pages?: Array<{ page_number: number; text: string }>;
   source_pdf?: string;
   det_arch?: string;
   reco_arch?: string;
@@ -14,7 +16,7 @@ export interface OcrExtractionJson {
 }
 
 /**
- * Runs {@link lease-backend-v2}/ocr_extraction.py via `uv run` on a PDF path.
+ * Runs {@link lease-backend-v2}/ocr_extraction.py (PyMuPDF) via `uv run` on a PDF path.
  * `uv run` uses the project virtualenv — no manual activation needed.
  */
 @Injectable()
@@ -35,11 +37,13 @@ export class OcrExtractionBridgeService {
     return 900_000;
   }
 
-  /** Resolve uv binary: prefer UV_PATH env var, then /usr/local/bin/uv, then fallback to 'uv' on PATH */
+  /** Resolve uv binary: prefer UV_PATH env var, then common absolute paths, then fallback to 'uv' on PATH. */
   private resolveUvBin(): string {
     const fromEnv = this.config.get<string>('UV_PATH');
     if (fromEnv) return fromEnv;
-    return '/usr/local/bin/uv';
+    const candidates = ['/opt/homebrew/bin/uv', '/usr/local/bin/uv'];
+    const resolved = candidates.find((candidate) => fsSync.existsSync(candidate)) ?? 'uv';
+    return resolved;
   }
   /**
    * Writes PDF bytes to a temp file and runs OCR. Cleans up the temp directory.
@@ -83,7 +87,7 @@ export class OcrExtractionBridgeService {
       const errChunks: Buffer[] = [];
 
       this.logger.log(
-        `OCR subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
+        `PDF text subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}.`,
       );
 
       const child: ChildProcess = spawn(
@@ -107,7 +111,7 @@ export class OcrExtractionBridgeService {
         errChunks.push(d);
         const line = d.toString('utf8').trim();
         if (line) {
-          this.logger.log(`[docTR stderr] ${line}`);
+          this.logger.log(`[ocr_extraction stderr] ${line}`);
         }
       });
 

@@ -24,8 +24,8 @@ export class LeaseAnalysisService {
   ) {}
 
   /**
-   * OCR (Python docTR) → five Groq JSON extractions streamed as NDJSON.
-   * OCR / config errors throw before the response is committed; Groq errors
+   * PDF text (PyMuPDF via Python script) → five Groq JSON extractions streamed as NDJSON.
+   * Extraction / config errors throw before the response is committed; Groq errors
    * emit a final `{ error, section, message }` line (HTTP status stays 200).
    */
   async streamNdjsonLeaseAnalysis(
@@ -37,7 +37,7 @@ export class LeaseAnalysisService {
     let ocrText: string;
     try {
       const ocr = await this.ocr.extractTextFromPdfBuffer(buffer);
-      ocrText = (ocr.full_text ?? '').trim();
+      ocrText = this.formatOcrTextWithPageMarkers(ocr);
     } catch (err) {
       this.logger.error(err);
       const msg =
@@ -91,6 +91,17 @@ export class LeaseAnalysisService {
     }
 
     res.end();
+  }
+
+  private formatOcrTextWithPageMarkers(
+    ocr: { full_text: string; pages?: Array<{ page_number: number; text: string }> },
+  ): string {
+    if (ocr.pages && ocr.pages.length > 0) {
+      return ocr.pages
+        .map((page) => `[PAGE ${page.page_number}]\n${page.text}`)
+        .join('\n\n');
+    }
+    return (ocr.full_text ?? '').trim();
   }
 
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {

@@ -36,12 +36,23 @@ export const MOCK_EXECUTIVE_IDENTITY = {
 
 export const MOCK_FINANCIAL_STACK = {
   summaryCards: [
-    { title: 'Total Contract Value', value: '$1,425,800.00' },
-    { title: 'Current Monthly Payment', value: '$12,450' },
     {
-      title: 'Next Rent Escalation',
-      value: '3%',
-      subtext: 'October 1, 2026',
+      title: 'Total contract value',
+      numericValue: 1425800,
+      valueUnit: 'usd',
+      citation: 'p. 8',
+    },
+    {
+      title: 'Current monthly payment',
+      numericValue: 12450,
+      valueUnit: 'usd',
+      citation: 'p. 4',
+    },
+    {
+      title: 'Next rent escalation',
+      numericValue: 3,
+      valueUnit: 'percent',
+      citation: 'p. 8',
     },
   ],
   rentSchedule: [
@@ -73,18 +84,55 @@ export const MOCK_CRITICAL_DEADLINES = {
       date: '2025-06-01',
       severity: 'high',
       citation: 'p. 4',
+      pageReference: { page: 4, section: '§4', highlightText: '' },
     },
     {
       title: 'First escalation window',
       date: '2026-10-01',
       severity: 'medium',
       citation: 'p. 8',
+      pageReference: { page: 8, section: '§8', highlightText: '' },
     },
     {
       title: 'Insurance certificate renewal',
       date: 'Annually by Jan 15',
       severity: 'medium',
       citation: 'p. 22',
+      pageReference: { page: 22, section: '', highlightText: '' },
+    },
+  ],
+  risks: [
+    {
+      title: 'Late Fee Ceiling Violation',
+      severity: 'critical',
+      contextSummary: 'Lease Mandates a 10% daily late fee.',
+      sectionReference: 'Section 4.2',
+      analysisText:
+        'NY Property Law 238-a caps late fees at 5% or $50. This clause is legally enforceable and creates litigation risk.',
+      citation: 'p. 6, §4.2',
+      pageReference: { page: 6, section: 'Section 4.2', highlightText: '' },
+    },
+    {
+      title: 'Invalid Security Deposit Handling',
+      severity: 'critical',
+      contextSummary:
+        'Lease allows Landlord to commingle security funds with operating capital.',
+      sectionReference: 'Section 7.0',
+      analysisText:
+        'NY General Obligations Law § 7-103 requires security deposits to be held in trust. This is a statutory violation.',
+      citation: 'p. 10, §7',
+      pageReference: { page: 10, section: 'Section 7.0', highlightText: '' },
+    },
+    {
+      title: 'Expired Renewal Window',
+      severity: 'critical',
+      contextSummary:
+        "The 180-day notice period for the next term ended on March 15, 2026.",
+      sectionReference: 'Section 15.1',
+      analysisText:
+        'The Tenant is currently in a "Holdover" position. Landlord can now legally increase rent by 200% or terminate occupancy with 30 days\' notice.',
+      citation: 'p. 28, §15.1',
+      pageReference: { page: 28, section: 'Section 15.1', highlightText: '' },
     },
   ],
 };
