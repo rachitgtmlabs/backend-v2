@@ -90,6 +90,28 @@ export class LeaseAnalysisService {
       }
     }
 
+    try {
+      const camData = await this.groq.extractCamReviewJson(ocrText, {
+        traceId,
+      });
+      res.write(
+        JSON.stringify({ section: 'camReview', data: camData }) + '\n',
+      );
+    } catch (err) {
+      this.logger.error('Groq failed for camReview', err);
+      const message =
+        err instanceof Error ? err.message : 'LLM request failed';
+      res.write(
+        JSON.stringify({
+          error: 'groq_failed',
+          section: 'camReview',
+          message,
+        }) + '\n',
+      );
+      res.end();
+      return;
+    }
+
     res.end();
   }
 

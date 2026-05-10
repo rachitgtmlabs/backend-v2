@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { TasksAlertsModule } from '../tasks-alerts/tasks-alerts.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { PropertyModule } from '../property/property.module';
 import { LeaseController } from './lease.controller';
@@ -15,6 +16,7 @@ import { Amendment, AmendmentSchema } from './schemas/amendment.schema';
     ]),
     PortfolioModule,
     PropertyModule,
+    TasksAlertsModule,
   ],
   controllers: [LeaseController],
   providers: [LeaseService],

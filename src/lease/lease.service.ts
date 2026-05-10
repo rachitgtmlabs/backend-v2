@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -8,6 +9,7 @@ import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
+import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
@@ -22,6 +24,8 @@ function newAmendmentId(): string {
 
 @Injectable()
 export class LeaseService {
+  private readonly logger = new Logger(LeaseService.name);
+
   constructor(
     @InjectModel(Lease.name)
     private leaseModel: Model<LeaseDocumentModel>,
@@ -29,6 +33,7 @@ export class LeaseService {
     private amendmentModel: Model<AmendmentDocumentModel>,
     private readonly portfolioService: PortfolioService,
     private readonly propertyService: PropertyService,
+    private readonly tasksAlertsService: TasksAlertsService,
   ) {}
 
   async create(dto: CreateLeaseDto) {
@@ -166,6 +171,18 @@ export class LeaseService {
       analysis: dto.analysis,
       amendment_version: 0,
     });
+
+    try {
+      await this.tasksAlertsService.seedForNewLease(
+        dto.portfolio_id,
+        dto.property_id,
+        leaseId,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Tasks/alerts seed failed for lease ${leaseId}: ${String(err)}`,
+      );
+    }
 
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;

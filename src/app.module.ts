@@ -5,6 +5,7 @@ import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
+import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PropertyModule } from './property/property.module';
     PropertyModule,
     LeaseModule,
     LeaseAnalysisModule,
+    TasksAlertsModule,
   ],
 })
 export class AppModule {}

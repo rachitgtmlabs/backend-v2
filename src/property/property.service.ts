@@ -44,10 +44,13 @@ export class PropertyService {
     let thumbnail_url: string | null = null;
 
     try {
-      thumbnail_url = await this.gcsThumbnail.uploadPropertyThumbnail(
+      const objectPath = await this.gcsThumbnail.uploadPropertyThumbnail(
         propertyId,
         file,
       );
+      if (objectPath) {
+        thumbnail_url = this.buildAssetProxyUrl(objectPath);
+      }
     } catch (err) {
       this.logger.warn(
         'GCS thumbnail upload failed; using default placeholder image',
@@ -111,6 +114,18 @@ export class PropertyService {
       '3001';
     const base = fromEnv || `http://localhost:${port}`;
     return `${base}${PLACEHOLDER_THUMBNAIL_PATH}`;
+  }
+
+  /** Builds backend proxy URL for a GCS asset. */
+  private buildAssetProxyUrl(objectPath: string): string {
+    const raw = this.config.get<string>('API_PUBLIC_URL')?.trim();
+    const fromEnv = raw ? raw.replace(/\/$/, '') : '';
+    const port =
+      this.config.get<string>('PORT')?.trim() ||
+      process.env.PORT ||
+      '3001';
+    const base = fromEnv || `http://localhost:${port}`;
+    return `${base}/v1/properties/asset/${objectPath}`;
   }
 
   private toResponse(doc: PropertyDocumentModel) {
