@@ -27,6 +27,14 @@ export interface GroqSectionExtractOptions {
   traceId?: string;
 }
 
+export interface ProposeComplianceReplacementInput {
+  riskTitle: string;
+  originalClause: string;
+  jurisdictionSummary: string;
+  existingProposedClause?: string;
+  severity?: string;
+}
+
 /**
  * Groq chat completions — cache-friendly, single-turn per section:
  * - Same system message every call (cached with OCR prefix when prompts align).
@@ -332,5 +340,66 @@ export class GroqLeaseAnalysisService {
     }
 
     return parsed;
+  }
+
+  /** Single-turn prose: compliant replacement wording for Resolve Risk UX. */
+  async proposeComplianceReplacement(
+    input: ProposeComplianceReplacementInput,
+  ): Promise<string> {
+    if (!this.client) {
+      throw new ServiceUnavailableException(
+        'GROQ_API_KEY is not configured; cannot propose clause wording.',
+      );
+    }
+
+    const model =
+      this.config.get<string>('GROQ_MODEL')?.trim() ?? 'openai/gpt-oss-120b';
+
+    const chunks: string[] = [
+      `Risk topic: ${input.riskTitle}`,
+      `Severity: ${input.severity ?? 'unspecified'}`,
+      `Jurisdiction summary: ${input.jurisdictionSummary}`,
+      `Lease provision to replace:\n"""${input.originalClause}"""`,
+    ];
+    const draft = input.existingProposedClause?.trim();
+    if (draft) {
+      chunks.push(
+        `Optional starting suggestion (rewrite or supersede):\n"""${draft}"""`,
+      );
+    }
+    chunks.push(
+      'Write ONLY replacement lease/amendment language that could substitute for the cited provision. Be concise, professional, jurisdiction-aware where indicated. ',
+      'Do not paste the objectionable clause back as the solution.',
+      'End with one sentence that counsel must review before execution.',
+    );
+
+    const messages = [
+      {
+        role: 'system' as const,
+        content:
+          'You are a senior commercial real estate paralegal drafting neutral, legally conservative replacement language.',
+      },
+      {
+        role: 'user' as const,
+        content: chunks.join('\n\n'),
+      },
+    ];
+
+    const completion = await this.runGroqWithBackoff(
+      'chat.completions.create proposed-clause',
+      () =>
+        this.client!.chat.completions.create({
+          model,
+          messages,
+          temperature: 0.15,
+          max_completion_tokens: 900,
+        }),
+    );
+
+    const raw = completion.choices[0]?.message?.content?.trim();
+    if (!raw) {
+      throw new Error('Groq returned empty proposed clause text');
+    }
+    return raw;
   }
 }

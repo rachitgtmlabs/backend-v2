@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
 import { GroqLeaseAnalysisService } from './groq-lease-analysis.service';
 import { OcrExtractionBridgeService } from './ocr-extraction-bridge.service';
@@ -22,6 +23,22 @@ export class LeaseAnalysisService {
     private readonly ocr: OcrExtractionBridgeService,
     private readonly groq: GroqLeaseAnalysisService,
   ) {}
+
+  async proposeComplianceReplacement(
+    dto: ProposedClauseDto,
+  ): Promise<{ proposedText: string }> {
+    this.groq.ensureConfigured();
+    const proposedText = await this.groq.proposeComplianceReplacement({
+      riskTitle: dto.riskTitle.trim(),
+      originalClause: dto.originalClause.trim(),
+      jurisdictionSummary: dto.jurisdictionSummary.trim(),
+      ...(dto.existingProposedClause?.trim()
+        ? { existingProposedClause: dto.existingProposedClause.trim() }
+        : {}),
+      ...(dto.severity ? { severity: dto.severity } : {}),
+    });
+    return { proposedText };
+  }
 
   /**
    * PDF text (PyMuPDF via Python script) → five Groq JSON extractions streamed as NDJSON.

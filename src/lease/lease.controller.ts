@@ -58,8 +58,65 @@ export class LeaseController {
     );
   }
 
-  @Post()  @HttpCode(HttpStatus.CREATED)
+  /**
+   * Get effective state of a lease (original lease + all amendments merged).
+   * GET /v1/leases/:leaseId/effective-state
+   */
+  @Get(':leaseId/effective-state')
+  getEffectiveState(@Param('leaseId') leaseId: string) {
+    return this.leaseService.getEffectiveState(leaseId.trim());
+  }
+
+  /**
+   * Get effective state by property (finds latest lease, then merges amendments).
+   * GET /v1/leases/by-property/:propertyId/effective-state?portfolio_id=prt_...
+   */
+  @Get('by-property/:propertyId/effective-state')
+  getEffectiveStateByProperty(
+    @Param('propertyId') propertyId: string,
+    @Query('portfolio_id') portfolioId: string | undefined,
+  ) {
+    const pid = portfolioId?.trim();
+    if (!pid) {
+      throw new BadRequestException(
+        'Query parameter portfolio_id is required',
+      );
+    }
+    return this.leaseService.getEffectiveStateByProperty(
+      pid,
+      propertyId.trim(),
+    );
+  }
+
+  /**
+   * List all amendments for a lease.
+   * GET /v1/leases/:leaseId/amendments
+   */
+  @Get(':leaseId/amendments')
+  listAmendments(@Param('leaseId') leaseId: string) {
+    return this.leaseService.listAmendments(leaseId.trim());
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
   create(@Body() body: CreateLeaseDto) {
     return this.leaseService.create(body);
+  }
+}
+
+/**
+ * Separate controller for amendment-specific endpoints.
+ */
+@Controller('amendments')
+export class AmendmentController {
+  constructor(private readonly leaseService: LeaseService) {}
+
+  /**
+   * Get a specific amendment by ID.
+   * GET /v1/amendments/:amendmentId
+   */
+  @Get(':amendmentId')
+  getAmendment(@Param('amendmentId') amendmentId: string) {
+    return this.leaseService.getAmendment(amendmentId.trim());
   }
 }

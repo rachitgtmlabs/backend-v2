@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AmendmentAnalysisModule } from './amendment-analysis/amendment-analysis.module';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
@@ -20,6 +21,7 @@ import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
     PropertyModule,
     LeaseModule,
     LeaseAnalysisModule,
+    AmendmentAnalysisModule,
     TasksAlertsModule,
   ],
 })

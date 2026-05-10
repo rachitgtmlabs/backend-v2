@@ -1,6 +1,9 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  HttpCode,
+  HttpStatus,
   Logger,
   Post,
   Res,
@@ -9,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { LeaseAnalysisService } from './lease-analysis.service';
 
 @Controller('lease-analysis')
@@ -16,6 +20,12 @@ export class LeaseAnalysisController {
   private readonly logger = new Logger(LeaseAnalysisController.name);
 
   constructor(private readonly leaseAnalysisService: LeaseAnalysisService) {}
+
+  @Post('proposed-clause')
+  @HttpCode(HttpStatus.OK)
+  proposeComplianceReplacement(@Body() body: ProposedClauseDto) {
+    return this.leaseAnalysisService.proposeComplianceReplacement(body);
+  }
 
   @Post('stream')
   @UseInterceptors(FileInterceptor('assets'))

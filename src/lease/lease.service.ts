@@ -13,6 +13,7 @@ import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
+import { deepMerge } from './utils/deep-merge.util';
 
 function newLeaseId(): string {
   return `les_${randomBytes(6).toString('hex')}`;
@@ -326,5 +327,174 @@ export class LeaseService {
     const draft = all.filter((i) => i.status === 'draft').sort(byUpdatedDesc);
 
     return { active, draft };
+  }
+
+  /**
+   * Get the effective state of a lease by merging original lease + all amendments.
+   * This computes the current values by applying all deltas in version order.
+   */
+  async getEffectiveState(leaseId: string) {
+    // Get the original lease
+    const lease = await this.leaseModel
+      .findOne({ leaseId })
+      .exec();
+
+    if (!lease) {
+      throw new NotFoundException(`Lease not found: ${leaseId}`);
+    }
+
+    // Get all amendments ordered by version
+    const amendments = await this.amendmentModel
+      .find({ lease_id: leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    // Start with the original lease's values
+    let effectiveLeaseInfo = { ...(lease.lease_information || {}) } as Record<string, unknown>;
+    let effectiveAnalysis = { ...(lease.analysis || {}) } as Record<string, unknown>;
+
+    // Apply each amendment's delta in order
+    for (const amendment of amendments) {
+      if (amendment.lease_information) {
+        effectiveLeaseInfo = deepMerge(
+          effectiveLeaseInfo,
+          amendment.lease_information as Record<string, unknown>,
+        );
+      }
+      if (amendment.analysis) {
+        effectiveAnalysis = deepMerge(
+          effectiveAnalysis,
+          amendment.analysis as Record<string, unknown>,
+        );
+      }
+    }
+
+    // Build amendment history
+    const amendmentHistory = amendments.map((a) => ({
+      version: a.version,
+      amendmentId: a.amendmentId,
+      file_name: a.file_name,
+      status: a.status,
+      changedSections: Object.keys(a.analysis || {}),
+      updated_at: a.updatedAt?.toISOString() ?? new Date().toISOString(),
+    }));
+
+    const createdAt = lease.createdAt;
+    const updatedAt = lease.updatedAt;
+
+    return {
+      leaseId: lease.leaseId,
+      currentVersion: amendments.length,
+      effectiveLeaseInfo,
+      effectiveAnalysis,
+      lease: {
+        id: lease.leaseId,
+        portfolio_id: lease.portfolio_id,
+        property_id: lease.property_id,
+        status: lease.status,
+        file_name: lease.file_name,
+        amendment_version: lease.amendment_version,
+        created_at: createdAt?.toISOString() ?? new Date().toISOString(),
+        updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),
+      },
+      amendments: amendmentHistory,
+    };
+  }
+
+  /**
+   * Get effective state by property ID (finds the latest lease first)
+   */
+  async getEffectiveStateByProperty(portfolioId: string, propertyId: string) {
+    const propertyOk = await this.propertyService.belongsToPortfolio(
+      propertyId,
+      portfolioId,
+    );
+    if (!propertyOk) {
+      throw new NotFoundException(
+        `Property ${propertyId} not found in portfolio ${portfolioId}`,
+      );
+    }
+
+    // Find the latest processed lease for this property
+    const lease = await this.leaseModel
+      .findOne({
+        portfolio_id: portfolioId,
+        property_id: propertyId,
+        status: 'processed',
+      })
+      .sort({ updatedAt: -1 })
+      .exec();
+
+    if (!lease) {
+      throw new NotFoundException(
+        'No processed lease found for this property.',
+      );
+    }
+
+    return this.getEffectiveState(lease.leaseId);
+  }
+
+  /**
+   * Get a specific amendment by ID
+   */
+  async getAmendment(amendmentId: string) {
+    const amendment = await this.amendmentModel
+      .findOne({ amendmentId })
+      .exec();
+
+    if (!amendment) {
+      throw new NotFoundException(`Amendment not found: ${amendmentId}`);
+    }
+
+    return {
+      amendment: {
+        id: amendment.amendmentId,
+        lease_id: amendment.lease_id,
+        version: amendment.version,
+        portfolio_id: amendment.portfolio_id,
+        property_id: amendment.property_id,
+        status: amendment.status,
+        file_name: amendment.file_name,
+        lease_information: amendment.lease_information,
+        analysis: amendment.analysis,
+        audit: {
+          created_at: amendment.createdAt?.toISOString() ?? new Date().toISOString(),
+          updated_at: amendment.updatedAt?.toISOString() ?? new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  /**
+   * List all amendments for a lease
+   */
+  async listAmendments(leaseId: string) {
+    const lease = await this.leaseModel
+      .findOne({ leaseId })
+      .exec();
+
+    if (!lease) {
+      throw new NotFoundException(`Lease not found: ${leaseId}`);
+    }
+
+    const amendments = await this.amendmentModel
+      .find({ lease_id: leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    return {
+      lease_id: leaseId,
+      amendments: amendments.map((a) => ({
+        id: a.amendmentId,
+        version: a.version,
+        status: a.status,
+        file_name: a.file_name,
+        changedSections: Object.keys(a.analysis || {}),
+        audit: {
+          created_at: a.createdAt?.toISOString() ?? new Date().toISOString(),
+          updated_at: a.updatedAt?.toISOString() ?? new Date().toISOString(),
+        },
+      })),
+    };
   }
 }
