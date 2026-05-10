@@ -13,25 +13,27 @@ import type { LeaseAnalysisSection } from './lease-analysis.mocks';
  * Identical on every section call. Output shape is defined by the API
  * json_schema for that section; focus here on extraction behavior.
  */
-export const LEASE_ANALYSIS_SYSTEM_PROMPT = `You are an expert commercial real estate lease analyst. The user message starts with raw OCR from one lease PDF, then "---", then a short task for a single abstract section.
+export const LEASE_ANALYSIS_SYSTEM_PROMPT = `You are an expert commercial real estate lease analyst. The user message starts with raw OCR from one lease PDF with page markers (e.g., [PAGE 1], [PAGE 2]), then "---", then a short task for a single abstract section.
 
 Rules:
 - Fill the response to match the response schema exactly (Structured Outputs).
 - Use empty strings "" and empty arrays [] where the OCR does not support a value.
-- Put page / section / exhibit references in citation fields when inferable; otherwise "".
+- Put page / section / exhibit references in citation fields when inferable; otherwise "". Reference pages by their number from the [PAGE N] markers (e.g., "p. 1, §1.1" or "p. 3").
+- When the schema includes a pageReference field, extract the page number from the [PAGE N] marker where the information was found, and populate highlightText with the verbatim first 3-5 words of the sentence or clause at that location exactly as it appears in the OCR text (use "" if the location is unclear).
 - amendments arrays contain strings (may be empty).
-- Ground answers in the OCR; do not invent parties, amounts, or dates not supported by the text.`;
+- Ground answers in the OCR; do not invent parties, amounts, or dates not supported by the text.
+- Match JSON value types to the schema: any field typed as string must be a JSON string (quoted). Never emit bare numeric literals for string-typed fields (e.g. rent schedule amounts must be strings, not numbers).`;
 
 /** Brief task lines only — schema lives in LEASE_ANALYSIS_JSON_SCHEMA. */
 export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
   executiveIdentity:
-    'Section: Executive Identity. Extract landlord/lessor, tenant/lessee, property or suite, lease identifier, rentable area, base rent description, security deposit, and renewal/options language.',
+    'Section: Executive Identity. Extract landlord/lessor, tenant/lessee, property or suite, lease identifier, rentable area (square feet as number only), rent per square foot (rate only, e.g., "$52.00"), base rent description, security deposit (amount only in "amount" field, any conditions/notes in "conditions" field), and renewal/options language.',
 
   financialStack:
-    'Section: Financial Stack. Extract headline financial KPIs as summary cards, any stepped rent or schedule rows, and separate line items for CAM, taxes, insurance, or other recurring charges.',
+    'Section: Financial Stack. For summaryCards: each card has title (short label), numericValue (raw number ONLY — no currency symbols, no "months"/"years" text, no commas), valueUnit one of months|years|usd|percent|plain, and citation (short only, e.g. "p. 4" or "Art. 1"; never long legal prose; use "" if unknown). Use usd for dollar amounts as a number (76000 not "$76,000"). Use percent for displayed percent (4.65 means 4.65%). Prefer months for primary lease term length. For rentSchedule: monthlyRent and annualRent are strings in JSON (e.g. "$76,000" and "$912,000" or "76000" / "912000"); never output them as numeric literals. In rentSchedule "notes", use "/sf" (per square foot), not "/psf". Also extract additionalCharges (CAM, taxes, insurance, etc.).',
 
   criticalDeadlines:
-    'Section: Critical Deadlines. List material date-driven obligations as milestones with severity. Set riskSummary counts so they match the number of milestones at each severity level.',
+    'Section: Critical Deadlines. You MUST return a JSON object with exactly three properties: riskSummary (object with high/medium/low integer counts), milestones (array), and risks (array). For milestones: list material date-driven obligations with severity high|medium|low. For riskSummary: count the number of milestones at each severity level (e.g., if you have 5 high-severity milestones, set riskSummary.high to 5). For risks: provide deviation and risk analysis cards—each needs severity critical|high|medium|low (use critical for statutory exposure or severe market deviation), title, contextSummary (short lease fact), sectionReference (e.g. "Section 4.2"), analysisText (why it matters / statute or exposure), citation, and pageReference. If no deviations found, risks must be an empty array [].',
 
   operationalGuardrails:
     'Section: Operational Guardrails. Capture permitted/prohibited uses, alteration and improvement rules, and stated building services (HVAC, janitorial, hours, etc.).',

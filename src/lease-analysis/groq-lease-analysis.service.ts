@@ -115,6 +115,7 @@ export class GroqLeaseAnalysisService {
       model,
       messages,
       temperature: 0.1,
+      max_completion_tokens: 10000,
       response_format: {
         type: 'json_schema',
         json_schema: {

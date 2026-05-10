@@ -3,7 +3,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
-import { OcrWarmupService } from './ocr/ocr-warmup.service';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
 
@@ -21,6 +20,5 @@ import { PropertyModule } from './property/property.module';
     LeaseModule,
     LeaseAnalysisModule,
   ],
-  providers: [OcrWarmupService],
 })
 export class AppModule {}

@@ -3,7 +3,6 @@ name = "lease-backend-v2"
 version = "0.0.1"
 requires-python = ">=3.10"
 dependencies = [
-  "python-doctr[torch]>=0.10.0",
   "pymupdf>=1.24.0",
 ]
 

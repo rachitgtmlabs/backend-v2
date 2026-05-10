@@ -37,6 +37,27 @@ export class LeaseController {
     );
   }
 
+  /**
+   * List main leases + amendments for a property (grouped by status).
+   * GET /v1/leases/by-property/:propertyId/documents?portfolio_id=prt_...
+   */
+  @Get('by-property/:propertyId/documents')
+  listDocumentsForProperty(
+    @Param('propertyId') propertyId: string,
+    @Query('portfolio_id') portfolioId: string | undefined,
+  ) {
+    const pid = portfolioId?.trim();
+    if (!pid) {
+      throw new BadRequestException(
+        'Query parameter portfolio_id is required',
+      );
+    }
+    return this.leaseService.listDocumentsForPortfolioProperty(
+      pid,
+      propertyId.trim(),
+    );
+  }
+
   @Post()  @HttpCode(HttpStatus.CREATED)
   create(@Body() body: CreateLeaseDto) {
     return this.leaseService.create(body);
