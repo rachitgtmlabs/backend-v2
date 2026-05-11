@@ -82,6 +82,7 @@ const financialStackSchema = {
   properties: {
     summaryCards: {
       type: 'array',
+      maxItems: 4,
       items: {
         type: 'object',
         properties: {
