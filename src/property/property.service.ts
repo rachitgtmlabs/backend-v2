@@ -84,7 +84,9 @@ export class PropertyService {
     }
 
     const docs = await this.propertyModel
-      .find({ portfolio_id: portfolioId })
+      .find({
+        $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+      })
       .sort({ createdAt: -1 })
       .exec();
 
@@ -99,7 +101,10 @@ export class PropertyService {
     portfolioId: string,
   ): Promise<boolean> {
     const doc = await this.propertyModel
-      .findOne({ propertyId, portfolio_id: portfolioId })
+      .findOne({
+        propertyId,
+        $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+      })
       .exec();
     return doc != null;
   }
