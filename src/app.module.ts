@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MongoIndexesService } from './database/mongo-indexes.service';
 import { AmendmentAnalysisModule } from './amendment-analysis/amendment-analysis.module';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
@@ -24,5 +25,6 @@ import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
     AmendmentAnalysisModule,
     TasksAlertsModule,
   ],
+  providers: [MongoIndexesService],
 })
 export class AppModule {}

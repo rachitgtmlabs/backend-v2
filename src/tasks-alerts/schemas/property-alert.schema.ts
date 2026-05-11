@@ -55,3 +55,9 @@ export class PropertyAlert {
 }
 
 export const PropertyAlertSchema = SchemaFactory.createForClass(PropertyAlert);
+
+PropertyAlertSchema.index({
+  portfolio_id: 1,
+  property_id: 1,
+  lease_id: 1,
+});

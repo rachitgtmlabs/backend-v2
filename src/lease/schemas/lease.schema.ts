@@ -35,3 +35,12 @@ export class Lease {
 }
 
 export const LeaseSchema = SchemaFactory.createForClass(Lease);
+
+LeaseSchema.index({ portfolio_id: 1, property_id: 1, updatedAt: -1 });
+LeaseSchema.index({
+  portfolio_id: 1,
+  property_id: 1,
+  status: 1,
+  updatedAt: -1,
+});
+LeaseSchema.index({ property_id: 1, updatedAt: -1 });

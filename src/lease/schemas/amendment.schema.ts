@@ -57,6 +57,5 @@ export class Amendment {
 
 export const AmendmentSchema = SchemaFactory.createForClass(Amendment);
 
-// Create compound indexes for optimal querying
 AmendmentSchema.index({ lease_id: 1, version: 1 });
-AmendmentSchema.index({ property_id: 1, portfolio_id: 1 });
+AmendmentSchema.index({ portfolio_id: 1, property_id: 1, updatedAt: -1 });

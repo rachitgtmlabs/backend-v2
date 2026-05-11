@@ -29,3 +29,6 @@ export class Property {
 }
 
 export const PropertySchema = SchemaFactory.createForClass(Property);
+
+PropertySchema.index({ portfolio_id: 1, createdAt: -1 });
+PropertySchema.index({ portfolioId: 1, createdAt: -1 }, { sparse: true });

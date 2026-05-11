@@ -49,3 +49,10 @@ export class TaskAlert {
 }
 
 export const TaskAlertSchema = SchemaFactory.createForClass(TaskAlert);
+
+TaskAlertSchema.index({
+  portfolio_id: 1,
+  property_id: 1,
+  lease_id: 1,
+  category: 1,
+});

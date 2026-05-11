@@ -103,3 +103,5 @@ export class Portfolio {
 }
 
 export const PortfolioSchema = SchemaFactory.createForClass(Portfolio);
+
+PortfolioSchema.index({ createdAt: -1 });
