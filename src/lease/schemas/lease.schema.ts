@@ -8,7 +8,7 @@ export type LeaseDocumentModel = HydratedDocument<Lease> & {
 
 @Schema({ collection: 'leases', timestamps: true })
 export class Lease {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: { unique: true, sparse: true } })
   leaseId: string;
 
   @Prop({ required: true, index: true })

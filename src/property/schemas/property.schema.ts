@@ -8,7 +8,7 @@ export type PropertyDocumentModel = HydratedDocument<Property> & {
 
 @Schema({ collection: 'properties', timestamps: true })
 export class Property {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: { unique: true, sparse: true } })
   propertyId: string;
 
   @Prop({ required: true, index: true })

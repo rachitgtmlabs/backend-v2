@@ -19,7 +19,7 @@ export type AmendmentDocumentModel = HydratedDocument<Amendment> & {
  */
 @Schema({ collection: 'amendments', timestamps: true })
 export class Amendment {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: { unique: true, sparse: true } })
   amendmentId: string;
 
   @Prop({ required: true, index: true })
