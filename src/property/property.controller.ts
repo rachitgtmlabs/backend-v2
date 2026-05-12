@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -57,6 +58,31 @@ export class PropertyController {
       'Cache-Control': 'public, max-age=31536000',
     });
     res.send(result.buffer);
+  }
+
+  @Get(':propertyId/deletion-impact')
+  deletionImpact(
+    @Param('propertyId') propertyId: string,
+    @Query('portfolio_id') portfolioId: string | undefined,
+  ) {
+    const pid = portfolioId?.trim();
+    if (!pid) {
+      throw new BadRequestException('Query parameter portfolio_id is required');
+    }
+    return this.propertyService.getDeletionImpact(pid, propertyId.trim());
+  }
+
+  @Delete(':propertyId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @Param('propertyId') propertyId: string,
+    @Query('portfolio_id') portfolioId: string | undefined,
+  ) {
+    const pid = portfolioId?.trim();
+    if (!pid) {
+      throw new BadRequestException('Query parameter portfolio_id is required');
+    }
+    await this.propertyService.remove(pid, propertyId.trim());
   }
 
   @Post()
