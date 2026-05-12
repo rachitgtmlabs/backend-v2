@@ -5,8 +5,21 @@
  * - Objects are merged recursively
  * - Arrays replace entirely (amendment arrays override, not concatenate)
  * - Primitives replace
- * - Undefined/null values in source are ignored (delta only contains changes)
+ * - "Empty" delta values are ignored (represent "no change"):
+ *   - undefined, null
+ *   - empty strings ("") when target has content
+ *   - empty arrays ([]) when target has items
+ *   - zero (0) when target has non-zero value
  */
+
+function isEmptyDeltaValue(value: unknown, targetValue: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (value === '' && typeof targetValue === 'string' && targetValue !== '') return true;
+  if (Array.isArray(value) && value.length === 0 && Array.isArray(targetValue) && targetValue.length > 0) return true;
+  if (value === 0 && typeof targetValue === 'number' && targetValue !== 0) return true;
+  return false;
+}
+
 export function deepMerge<T extends Record<string, unknown>>(
   target: T,
   source: Partial<T>,
@@ -17,8 +30,8 @@ export function deepMerge<T extends Record<string, unknown>>(
     const sourceValue = source[key];
     const targetValue = target[key];
 
-    // Skip undefined or null values in source (no change)
-    if (sourceValue === undefined || sourceValue === null) {
+    // Skip empty delta values that represent "no change"
+    if (isEmptyDeltaValue(sourceValue, targetValue)) {
       continue;
     }
 
