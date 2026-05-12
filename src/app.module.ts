@@ -8,6 +8,7 @@ import { LeaseModule } from './lease/lease.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
 import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
     LeaseAnalysisModule,
     AmendmentAnalysisModule,
     TasksAlertsModule,
+    ChatModule,
   ],
   providers: [MongoIndexesService],
 })
