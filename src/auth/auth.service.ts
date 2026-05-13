@@ -17,8 +17,8 @@ export class AuthService {
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
 
-      if (privateKey && privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
-        try {
+      try {
+        if (privateKey && privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
           admin.initializeApp({
             credential: admin.credential.cert({
               projectId,
@@ -26,11 +26,18 @@ export class AuthService {
               privateKey: privateKey.replace(/\\n/g, '\n'),
             }),
           });
-        } catch (error) {
-          console.error('Firebase Admin initialization failed:', error.message);
+          console.log('Firebase Admin initialized with explicit service account key.');
+        } else {
+          // Fallback to Application Default Credentials
+          admin.initializeApp({
+            credential: admin.credential.applicationDefault(),
+            projectId, // Project ID might still be needed for some services
+          });
+          console.log('Firebase Admin initialized with Application Default Credentials.');
         }
-      } else {
-        console.warn('Firebase Admin not initialized: FIREBASE_PRIVATE_KEY is missing or invalid.');
+      } catch (error) {
+        console.warn('Firebase Admin initialization failed:', error.message);
+        console.warn('Auth features (Google/Phone) may not work correctly.');
       }
     }
   }
@@ -68,6 +75,10 @@ export class AuthService {
   }
 
   async googleLogin(idToken: string) {
+    if (!admin.apps.length) {
+      console.error('Google Login Attempted but Firebase Admin is not initialized.');
+      throw new UnauthorizedException('Authentication service is unavailable');
+    }
     try {
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const { email, name, picture } = decodedToken;
@@ -85,11 +96,16 @@ export class AuthService {
 
       return this.login(user.toObject());
     } catch (error) {
+      console.error('Google Token Verification Error:', error.message);
       throw new UnauthorizedException('Invalid Google token');
     }
   }
 
   async phoneLogin(idToken: string) {
+    if (!admin.apps.length) {
+      console.error('Phone Login Attempted but Firebase Admin is not initialized.');
+      throw new UnauthorizedException('Authentication service is unavailable');
+    }
     try {
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const { phone_number } = decodedToken;
@@ -102,6 +118,7 @@ export class AuthService {
 
       return this.login(user.toObject());
     } catch (error) {
+      console.error('Phone Token Verification Error:', error.message);
       throw new UnauthorizedException('Invalid Phone token');
     }
   }
