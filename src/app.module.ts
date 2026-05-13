@@ -9,6 +9,8 @@ import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
 import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
 import { ChatModule } from './chat/chat.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { ChatModule } from './chat/chat.module';
     AmendmentAnalysisModule,
     TasksAlertsModule,
     ChatModule,
+    UsersModule,
+    AuthModule,
   ],
   providers: [MongoIndexesService],
 })
