@@ -39,6 +39,10 @@ export class UsersService {
     }
 
     if (user) {
+      if (userData.photoURL && user.photoURL !== userData.photoURL) {
+        user.photoURL = userData.photoURL;
+        return user.save();
+      }
       return user;
     }
 
