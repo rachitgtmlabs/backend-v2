@@ -16,7 +16,7 @@ export interface OcrExtractionJson {
 }
 
 /**
- * Runs {@link lease-backend-v2}/ocr_extraction.py (PyMuPDF) via `uv run` on a PDF path.
+ * Runs {@link lease-backend-v2}/ocr_extraction.py (Google Document AI) via `uv run` on a PDF path.
  * `uv run` uses the project virtualenv — no manual activation needed.
  */
 @Injectable()
@@ -90,32 +90,6 @@ export class OcrExtractionBridgeService {
         `PDF text subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}.`,
       );
 
-      // #region agent log
-      void fetch(
-        'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': 'cf65a2',
-          },
-          body: JSON.stringify({
-            sessionId: 'cf65a2',
-            location: 'ocr-extraction-bridge.service.ts:runUvPythonScript',
-            message: 'pre-spawn OCR',
-            data: {
-              hypothesisId: 'H1',
-              cwd: this.projectRoot,
-              pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
-            },
-            timestamp: Date.now(),
-            hypothesisId: 'H1',
-            runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
-
       const child: ChildProcess = spawn(
         uvBin,
         ['run', 'python', this.scriptPath, ...args],
@@ -151,32 +125,6 @@ export class OcrExtractionBridgeService {
 
       child.on('error', (err) => {
         clearTimeout(killTimer);
-        // #region agent log
-        const ne = err as NodeJS.ErrnoException;
-        void fetch(
-          'http://127.0.0.1:7523/ingest/4ac1908c-e3be-4eb6-a040-8efa62511e86',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Debug-Session-Id': 'cf65a2',
-            },
-            body: JSON.stringify({
-              sessionId: 'cf65a2',
-              location: 'ocr-extraction-bridge.service.ts:spawn-error',
-              message: 'OCR spawn error',
-              data: {
-                hypothesisId: 'H1',
-                code: ne.code,
-                pathHead: (process.env.PATH ?? '').split(':').slice(0, 12),
-              },
-              timestamp: Date.now(),
-              hypothesisId: 'H1',
-              runId: process.env.DEBUG_RUN_ID ?? 'pre-verify',
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
         reject(
           new Error(
             `Failed to spawn OCR (is uv on PATH? tried: ${uvBin}). ${err.message}`,
