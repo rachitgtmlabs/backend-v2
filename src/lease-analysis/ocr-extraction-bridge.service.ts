@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as fsSync from 'node:fs';
@@ -20,13 +20,28 @@ export interface OcrExtractionJson {
  * `uv run` uses the project virtualenv — no manual activation needed.
  */
 @Injectable()
-export class OcrExtractionBridgeService {
+export class OcrExtractionBridgeService implements OnModuleInit {
   private readonly logger = new Logger(OcrExtractionBridgeService.name);
 
   private readonly projectRoot = process.cwd();
   private readonly scriptPath = path.join(this.projectRoot, 'ocr_extraction.py');
 
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    const uvBin = this.resolveUvBin();
+    const child = spawn(uvBin, ['run', 'python', '--version'], {
+      cwd: this.projectRoot,
+      env: { ...process.env },
+      stdio: 'ignore',
+    });
+    child.on('error', () => {});
+    child.on('close', (code) => {
+      if (code === 0) {
+        this.logger.log('uv environment pre-warmed successfully.');
+      }
+    });
+  }
 
   private ocrSubprocessTimeoutMs(): number {
     const raw = this.config.get<string>('OCR_SUBPROCESS_TIMEOUT_MS');
@@ -138,8 +153,9 @@ export class OcrExtractionBridgeService {
         const stderr = Buffer.concat(errChunks).toString('utf8');
         const stdout = Buffer.concat(chunks).toString('utf8');
 
+        const seconds = (elapsedMs / 1000).toFixed(2);
         this.logger.log(
-          `OCR subprocess closed code=${code} elapsedMs=${elapsedMs}`,
+          `OCR subprocess finished — this run took ${seconds}s (${elapsedMs}ms), exit code ${code}.`,
         );
 
         if (code !== 0) {

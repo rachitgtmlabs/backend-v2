@@ -35,10 +35,12 @@ Optional env vars:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import io
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -129,8 +131,8 @@ def extract_with_document_ai(pdf_path: Path) -> tuple[str, list[dict[str, Any]]]
             ),
         )
 
-    all_page_texts: list[str] = []
-    for i, chunk_bytes in enumerate(chunks):
+    def _process_chunk(args: tuple[int, bytes]) -> tuple[int, list[str]]:
+        i, chunk_bytes = args
         raw_document = documentai.RawDocument(
             content=chunk_bytes,
             mime_type="application/pdf",
@@ -142,8 +144,19 @@ def extract_with_document_ai(pdf_path: Path) -> tuple[str, list[dict[str, Any]]]
         )
         result = client.process_document(request=request)
         chunk_texts = _page_text_from_document(result.document)
-        all_page_texts.extend(chunk_texts)
         print(f"Chunk {i + 1}/{len(chunks)}: extracted {len(chunk_texts)} pages.", file=sys.stderr)
+        return i, chunk_texts
+
+    results: list[tuple[int, list[str]]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+        futures = [executor.submit(_process_chunk, (i, cb)) for i, cb in enumerate(chunks)]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+
+    results.sort(key=lambda x: x[0])
+    all_page_texts: list[str] = []
+    for _, chunk_texts in results:
+        all_page_texts.extend(chunk_texts)
 
     pages = [
         {"page_number": i + 1, "text": text}
@@ -155,12 +168,26 @@ def extract_with_document_ai(pdf_path: Path) -> tuple[str, list[dict[str, Any]]]
 
 
 def extract_pdf(pdf_path: Path) -> dict[str, Any]:
+    ocr_started = time.perf_counter()
     try:
         text, pages = extract_with_document_ai(pdf_path)
     except Exception as e:
+        elapsed_s = time.perf_counter() - ocr_started
         print(f"Document AI extraction failed: {e}", file=sys.stderr)
+        print(
+            f"OCR extraction time: {elapsed_s:.2f}s (failed before completion).",
+            file=sys.stderr,
+        )
         text = ""
         pages = []
+    else:
+        elapsed_s = time.perf_counter() - ocr_started
+        page_count = len(pages)
+        print(
+            f"OCR extraction time: {elapsed_s:.2f}s — completed successfully "
+            f"({page_count} page{'s' if page_count != 1 else ''} extracted).",
+            file=sys.stderr,
+        )
 
     return {
         "source_pdf": str(pdf_path.resolve()),
