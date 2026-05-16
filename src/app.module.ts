@@ -11,6 +11,8 @@ import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
 import { ChatModule } from './chat/chat.module';
 import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ChatModule,
     GoogleCalendarModule,
     DashboardModule,
+    AuthModule,
+    UsersModule,
   ],
   providers: [MongoIndexesService],
 })

@@ -17,7 +17,7 @@ export interface CalendarEventResult {
   htmlLink: string;
 }
 
-const DEFAULT_ATTENDEE_EMAIL = 'viveknagesh0301@gmail.com';
+const DEFAULT_ATTENDEE_EMAIL = '';
 
 @Injectable()
 export class GoogleCalendarService {
