@@ -100,6 +100,7 @@ export class LeaseService {
       file_name: dto.file_name,
       lease_information: dto.lease_information,
       analysis: dto.analysis,
+      drafted_amendments: dto.drafted_amendments ?? [],
     });
 
     // Increment amendment_version on the parent lease
@@ -171,6 +172,7 @@ export class LeaseService {
       lease_information: dto.lease_information,
       analysis: dto.analysis,
       amendment_version: 0,
+      drafted_amendments: dto.drafted_amendments ?? [],
     });
 
     try {

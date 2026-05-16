@@ -1,5 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
+import {
+  DraftedAmendment,
+  DraftedAmendmentSchema,
+} from './drafted-amendment.schema';
 
 export type AmendmentDocumentModel = HydratedDocument<Amendment> & {
   createdAt: Date;
@@ -53,6 +57,14 @@ export class Amendment {
    */
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   analysis: Record<string, unknown>;
+
+  /**
+   * Risk-driven amendment drafts the user authored during analysis of this
+   * amendment document. Stored alongside the amendment so the full markdown
+   * survives beyond the TaskAlert audit string.
+   */
+  @Prop({ type: [DraftedAmendmentSchema], default: [] })
+  drafted_amendments: DraftedAmendment[];
 }
 
 export const AmendmentSchema = SchemaFactory.createForClass(Amendment);

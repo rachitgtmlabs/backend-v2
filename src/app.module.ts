@@ -10,6 +10,7 @@ import { PropertyModule } from './property/property.module';
 import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
 import { ChatModule } from './chat/chat.module';
 import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
     TasksAlertsModule,
     ChatModule,
     GoogleCalendarModule,
+    DashboardModule,
   ],
   providers: [MongoIndexesService],
 })

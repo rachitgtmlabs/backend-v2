@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { DraftAddendumDto } from './dto/draft-addendum.dto';
 import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { LeaseAnalysisService } from './lease-analysis.service';
 
@@ -25,6 +26,12 @@ export class LeaseAnalysisController {
   @HttpCode(HttpStatus.OK)
   proposeComplianceReplacement(@Body() body: ProposedClauseDto) {
     return this.leaseAnalysisService.proposeComplianceReplacement(body);
+  }
+
+  @Post('draft-addendum')
+  @HttpCode(HttpStatus.OK)
+  draftAddendum(@Body() body: DraftAddendumDto) {
+    return this.leaseAnalysisService.draftAddendum(body);
   }
 
   @Post('stream')

@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { DraftAddendumDto } from './dto/draft-addendum.dto';
 import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
 import { GroqLeaseAnalysisService } from './groq-lease-analysis.service';
@@ -38,6 +39,26 @@ export class LeaseAnalysisService {
       ...(dto.severity ? { severity: dto.severity } : {}),
     });
     return { proposedText };
+  }
+
+  async draftAddendum(dto: DraftAddendumDto): Promise<{ markdown: string }> {
+    this.groq.ensureConfigured();
+    const markdown = await this.groq.draftAddendumMarkdown({
+      riskTitle: dto.riskTitle.trim(),
+      originalClause: dto.originalClause.trim(),
+      proposedClause: dto.proposedClause.trim(),
+      jurisdictionSummary: dto.jurisdictionSummary.trim(),
+      ...(dto.severity ? { severity: dto.severity } : {}),
+      ...(dto.leaseTitle?.trim() ? { leaseTitle: dto.leaseTitle.trim() } : {}),
+      ...(dto.landlordName?.trim()
+        ? { landlordName: dto.landlordName.trim() }
+        : {}),
+      ...(dto.tenantName?.trim() ? { tenantName: dto.tenantName.trim() } : {}),
+      ...(dto.effectiveDate?.trim()
+        ? { effectiveDate: dto.effectiveDate.trim() }
+        : {}),
+    });
+    return { markdown };
   }
 
   /**

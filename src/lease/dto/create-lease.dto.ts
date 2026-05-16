@@ -1,4 +1,13 @@
-import { IsIn, IsObject, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { DraftedAmendmentDto } from './drafted-amendment.dto';
 
 export class CreateLeaseDto {
   @IsString()
@@ -22,4 +31,14 @@ export class CreateLeaseDto {
 
   @IsObject()
   analysis: Record<string, unknown>;
+
+  /**
+   * Optional structured amendment drafts the user authored during analysis.
+   * Persisted on the resulting Lease/Amendment document.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DraftedAmendmentDto)
+  drafted_amendments?: DraftedAmendmentDto[];
 }
