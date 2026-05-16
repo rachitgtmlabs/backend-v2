@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { google } from 'googleapis';
+import { randomUUID } from 'crypto';
+import * as nodemailer from 'nodemailer';
 
 export interface CalendarEventInput {
   title: string;
-  /** ISO date string or human-readable date like "March 15, 2025". */
+  /** ISO date string like "2026-05-18". */
   date: string;
   description?: string;
-  /** Overrides GOOGLE_CALENDAR_ATTENDEE_EMAIL for this event. */
+  /** Override default attendee/recipient email. */
   attendeeEmail?: string;
 }
 
@@ -16,97 +17,146 @@ export interface CalendarEventResult {
   htmlLink: string;
 }
 
+const DEFAULT_ATTENDEE_EMAIL = 'viveknagesh0301@gmail.com';
+
 @Injectable()
 export class GoogleCalendarService {
   private readonly logger = new Logger(GoogleCalendarService.name);
   private readonly enabled: boolean;
-  private readonly calendarId: string;
   private readonly attendeeEmail: string;
-  private readonly clientEmail: string | undefined;
-  private readonly privateKey: string | undefined;
+  private readonly smtpUser: string;
+  private readonly transporter: nodemailer.Transporter | null;
 
   constructor(private readonly config: ConfigService) {
     const raw = config.get<string>('GOOGLE_CALENDAR_ENABLED') ?? 'true';
     this.enabled = raw.trim().toLowerCase() !== 'false';
-    this.calendarId = config.get<string>('GOOGLE_CALENDAR_ID') ?? 'primary';
     this.attendeeEmail =
-      config.get<string>('GOOGLE_CALENDAR_ATTENDEE_EMAIL') ?? '';
-    this.clientEmail = config.get<string>('GOOGLE_CALENDAR_CLIENT_EMAIL');
-    this.privateKey = config
-      .get<string>('GOOGLE_CALENDAR_PRIVATE_KEY')
-      ?.replace(/\\n/g, '\n');
+      config.get<string>('GOOGLE_CALENDAR_ATTENDEE_EMAIL') || DEFAULT_ATTENDEE_EMAIL;
+
+    const smtpHost = config.get<string>('SMTP_HOST');
+    const smtpPort = parseInt(config.get<string>('SMTP_PORT') ?? '587', 10);
+    this.smtpUser = config.get<string>('SMTP_USER') ?? '';
+    const smtpPass = config.get<string>('SMTP_PASS') ?? '';
+
+    if (smtpHost && this.smtpUser && smtpPass) {
+      this.transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: this.smtpUser, pass: smtpPass },
+      });
+      this.logger.log(`SMTP transport configured (${smtpHost}:${smtpPort})`);
+    } else {
+      this.transporter = null;
+      this.logger.warn(
+        'SMTP not configured (set SMTP_HOST, SMTP_USER, SMTP_PASS). Calendar invites will not be sent.',
+      );
+    }
   }
 
   isEnabled(): boolean {
-    return this.enabled;
+    return this.enabled && this.transporter !== null;
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEventResult | null> {
     if (!this.enabled) {
-      this.logger.log('Google Calendar is disabled (GOOGLE_CALENDAR_ENABLED=false). Skipping event creation.');
+      this.logger.log('Calendar invites disabled (GOOGLE_CALENDAR_ENABLED=false).');
+      return null;
+    }
+    if (!this.transporter) {
+      this.logger.warn('No SMTP transport — cannot send calendar invite.');
       return null;
     }
 
-    if (!this.clientEmail || !this.privateKey) {
-      this.logger.warn(
-        'GOOGLE_CALENDAR_CLIENT_EMAIL or GOOGLE_CALENDAR_PRIVATE_KEY is not set. Skipping event creation.',
-      );
-      return null;
-    }
-
-    const auth = new google.auth.JWT({
-      email: this.clientEmail,
-      key: this.privateKey,
-      scopes: ['https://www.googleapis.com/auth/calendar'],
-    });
-
-    const calendar = google.calendar({ version: 'v3', auth });
-
+    const to = input.attendeeEmail || this.attendeeEmail;
     const eventDate = this.parseDate(input.date);
     const nextDay = new Date(eventDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    const attendeeEmail = input.attendeeEmail ?? this.attendeeEmail;
-    const attendees = attendeeEmail ? [{ email: attendeeEmail }] : [];
-
-    const response = await calendar.events.insert({
-      calendarId: this.calendarId,
-      requestBody: {
-        summary: input.title,
-        description: input.description,
-        start: { date: this.toDateString(eventDate) },
-        end: { date: this.toDateString(nextDay) },
-        attendees,
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: 'email', minutes: 24 * 60 },
-            { method: 'popup', minutes: 60 },
-          ],
-        },
-      },
+    const uid = randomUUID();
+    const icsContent = this.buildIcs({
+      uid,
+      title: input.title,
+      description: input.description ?? '',
+      startDate: eventDate,
+      endDate: nextDay,
+      organizer: this.smtpUser,
+      attendee: to,
     });
 
-    const event = response.data;
-    this.logger.log(`Calendar event created: ${event.id}`);
-    return {
-      eventId: event.id ?? '',
-      htmlLink: event.htmlLink ?? '',
-    };
+    try {
+      await this.transporter.sendMail({
+        from: `LeaseIQ <${this.smtpUser}>`,
+        to,
+        subject: input.title,
+        text: [
+          input.title,
+          '',
+          `Date: ${input.date}`,
+          '',
+          input.description ?? '',
+          '',
+          'This calendar invite was sent from LeaseIQ.',
+        ].join('\n'),
+        icalEvent: {
+          method: 'REQUEST',
+          content: icsContent,
+        },
+      });
+
+      this.logger.log(`Calendar invite sent to ${to} for ${input.date}`);
+      return { eventId: uid, htmlLink: '' };
+    } catch (err: any) {
+      this.logger.error(`Failed to send calendar invite: ${err.message}`);
+      throw new Error(`Failed to send calendar invite: ${err.message}`);
+    }
+  }
+
+  private buildIcs(opts: {
+    uid: string;
+    title: string;
+    description: string;
+    startDate: Date;
+    endDate: Date;
+    organizer: string;
+    attendee: string;
+  }): string {
+    const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const fmtDate = (d: Date) =>
+      d.toISOString().split('T')[0].replace(/-/g, '');
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+    return [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//LeaseIQ//Calendar Invite//EN',
+      'METHOD:REQUEST',
+      'BEGIN:VEVENT',
+      `UID:${opts.uid}`,
+      `DTSTAMP:${fmt(new Date())}`,
+      `DTSTART;VALUE=DATE:${fmtDate(opts.startDate)}`,
+      `DTEND;VALUE=DATE:${fmtDate(opts.endDate)}`,
+      `SUMMARY:${esc(opts.title)}`,
+      `DESCRIPTION:${esc(opts.description)}`,
+      `ORGANIZER;CN=LeaseIQ:mailto:${opts.organizer}`,
+      `ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION:mailto:${opts.attendee}`,
+      'BEGIN:VALARM',
+      'TRIGGER:-P1D',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:Reminder',
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
   }
 
   private parseDate(raw: string): Date {
     const trimmed = raw.trim();
     const parsed = new Date(trimmed);
     if (!isNaN(parsed.getTime())) return parsed;
-    // Fallback: 7 days from now if unparseable
     const fallback = new Date();
     fallback.setDate(fallback.getDate() + 7);
     this.logger.warn(`Could not parse date "${raw}", using fallback (+7 days).`);
     return fallback;
-  }
-
-  private toDateString(d: Date): string {
-    return d.toISOString().split('T')[0];
   }
 }
