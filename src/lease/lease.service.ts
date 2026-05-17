@@ -10,6 +10,7 @@ import { Model } from 'mongoose';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
+import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
@@ -35,6 +36,7 @@ export class LeaseService {
     private readonly portfolioService: PortfolioService,
     private readonly propertyService: PropertyService,
     private readonly tasksAlertsService: TasksAlertsService,
+    private readonly gcsThumbnail: GcsThumbnailService,
   ) {}
 
   async create(dto: CreateLeaseDto) {
@@ -242,6 +244,12 @@ export class LeaseService {
       );
     }
 
+    // Fetch all amendments so the caller can render them in the review panel
+    const amendmentDocs = await this.amendmentModel
+      .find({ lease_id: doc.leaseId })
+      .sort({ version: 1 })
+      .exec();
+
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;
     return {
@@ -251,6 +259,7 @@ export class LeaseService {
         property_id: doc.property_id,
         status: doc.status,
         file_name: doc.file_name,
+        gcs_document_path: doc.gcs_document_path ?? null,
         lease_information: doc.lease_information,
         analysis: doc.analysis,
         audit: {
@@ -261,6 +270,13 @@ export class LeaseService {
           self: `/v1/leases/${doc.leaseId}`,
         },
       },
+      amendments: amendmentDocs.map((a) => ({
+        id: a.amendmentId,
+        version: a.version,
+        file_name: a.file_name,
+        gcs_document_path: a.gcs_document_path ?? null,
+        drafted_amendments: a.drafted_amendments ?? [],
+      })),
     };
   }
 
@@ -379,6 +395,7 @@ export class LeaseService {
       amendmentId: a.amendmentId,
       file_name: a.file_name,
       status: a.status,
+      gcs_document_path: a.gcs_document_path ?? null,
       changedSections: Object.keys(a.analysis || {}),
       updated_at: a.updatedAt?.toISOString() ?? new Date().toISOString(),
     }));
@@ -397,6 +414,7 @@ export class LeaseService {
         property_id: lease.property_id,
         status: lease.status,
         file_name: lease.file_name,
+        gcs_document_path: lease.gcs_document_path ?? null,
         amendment_version: lease.amendment_version,
         created_at: createdAt?.toISOString() ?? new Date().toISOString(),
         updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),
@@ -467,6 +485,21 @@ export class LeaseService {
         },
       },
     };
+  }
+
+  /**
+   * Download a stored document from GCS by its object path.
+   * The path must start with `documents/` to prevent traversal.
+   */
+  async downloadDocument(objectPath: string) {
+    if (!objectPath.startsWith('documents/')) {
+      throw new BadRequestException('Invalid document path');
+    }
+    const result = await this.gcsThumbnail.downloadFile(objectPath);
+    if (!result) {
+      throw new NotFoundException('Document not found or storage not configured');
+    }
+    return result;
   }
 
   /**

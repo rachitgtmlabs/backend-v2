@@ -5,11 +5,15 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { LeaseService } from './lease.service';
@@ -38,6 +42,33 @@ export class LeaseController {
       pid,
       propertyId.trim(),
     );
+  }
+
+  /**
+   * Proxy a stored lease/amendment PDF from GCS to the client.
+   * GET /v1/leases/document?path=documents/leases/...
+   */
+  @Get('document')
+  async getDocument(
+    @Query('path') objectPath: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const path = objectPath?.trim();
+    if (!path) {
+      throw new BadRequestException('Query parameter path is required');
+    }
+    if (!path.startsWith('documents/')) {
+      throw new BadRequestException('Invalid document path');
+    }
+    const result = await this.leaseService.downloadDocument(path);
+    if (!result) {
+      throw new NotFoundException('Document not found');
+    }
+    res.set({
+      'Content-Type': result.contentType,
+      'Content-Disposition': 'inline',
+    });
+    return new StreamableFile(result.buffer);
   }
 
   /**
