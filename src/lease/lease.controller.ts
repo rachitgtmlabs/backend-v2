@@ -8,11 +8,14 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { LeaseService } from './lease.service';
 
 @Controller('leases')
+@UseGuards(PortfolioAccessGuard)
 export class LeaseController {
   constructor(private readonly leaseService: LeaseService) {}
 

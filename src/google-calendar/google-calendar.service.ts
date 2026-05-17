@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import * as nodemailer from 'nodemailer';
@@ -151,12 +151,16 @@ export class GoogleCalendarService {
   }
 
   private parseDate(raw: string): Date {
-    const trimmed = raw.trim();
+    const trimmed = raw?.trim() ?? '';
+    if (!trimmed) {
+      throw new BadRequestException('date is required');
+    }
     const parsed = new Date(trimmed);
-    if (!isNaN(parsed.getTime())) return parsed;
-    const fallback = new Date();
-    fallback.setDate(fallback.getDate() + 7);
-    this.logger.warn(`Could not parse date "${raw}", using fallback (+7 days).`);
-    return fallback;
+    if (isNaN(parsed.getTime())) {
+      throw new BadRequestException(
+        `Could not parse date "${raw}" — expected ISO 8601 (YYYY-MM-DD) or "Month DD, YYYY"`,
+      );
+    }
+    return parsed;
   }
 }

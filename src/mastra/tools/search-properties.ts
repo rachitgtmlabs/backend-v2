@@ -96,24 +96,42 @@ You can search by property name (partial match) and/or filter by portfolio ID.`,
         .limit(20)
         .toArray();
 
-      const propertiesWithLeaseInfo = await Promise.all(
-        properties.map(async (p) => {
-          const lease = await leasesCollection.findOne(
-            { property_id: p.propertyId, status: 'processed' },
-            { projection: { leaseId: 1 } },
-          );
+      // Batch lease lookups in a single query instead of N+1.
+      const propertyIds = properties
+        .map((p) => p.propertyId)
+        .filter((id): id is string => typeof id === 'string');
 
-          return {
-            id: p.propertyId,
-            name: p.property_name,
-            portfolio_id: p.portfolio_id,
-            address: p.address,
-            property_type: p.property_type,
-            has_lease: !!lease,
-            lease_id: lease?.leaseId,
-          };
-        }),
-      );
+      const leaseRows = propertyIds.length
+        ? await leasesCollection
+            .find(
+              { property_id: { $in: propertyIds }, status: 'processed' },
+              { projection: { leaseId: 1, property_id: 1 } },
+            )
+            .toArray()
+        : [];
+
+      const leaseByProperty = new Map<string, string>();
+      for (const row of leaseRows) {
+        if (row.property_id && row.leaseId) {
+          // Prefer the first match (queries above are already filtered to processed).
+          if (!leaseByProperty.has(row.property_id)) {
+            leaseByProperty.set(row.property_id, row.leaseId);
+          }
+        }
+      }
+
+      const propertiesWithLeaseInfo = properties.map((p) => {
+        const leaseId = leaseByProperty.get(p.propertyId);
+        return {
+          id: p.propertyId,
+          name: p.property_name,
+          portfolio_id: p.portfolio_id,
+          address: p.address,
+          property_type: p.property_type,
+          has_lease: !!leaseId,
+          lease_id: leaseId,
+        };
+      });
 
       return {
         success: true,

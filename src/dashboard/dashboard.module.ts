@@ -4,6 +4,7 @@ import { Property, PropertySchema } from '../property/schemas/property.schema';
 import { Lease, LeaseSchema } from '../lease/schemas/lease.schema';
 import { TaskAlert, TaskAlertSchema } from '../tasks-alerts/schemas/task-alert.schema';
 import { Portfolio, PortfolioSchema } from '../portfolio/schemas/portfolio.schema';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 
@@ -15,6 +16,7 @@ import { DashboardService } from './dashboard.service';
       { name: TaskAlert.name, schema: TaskAlertSchema },
       { name: Portfolio.name, schema: PortfolioSchema },
     ]),
+    PortfolioModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

@@ -28,6 +28,18 @@ function newDocRequirementId(): string {
   return `doc_req_${randomBytes(4).toString('hex')}`;
 }
 
+/**
+ * Legacy portfolios were created before per-user ownership existed and have
+ * `created_by: 'user_admin'`. They are visible to all authenticated users so
+ * the upgrade path doesn't strand the existing demo data.
+ */
+const LEGACY_OWNER = 'user_admin';
+
+function ownerFilter(userId?: string): Record<string, unknown> {
+  if (!userId) return { created_by: LEGACY_OWNER };
+  return { created_by: { $in: [userId, LEGACY_OWNER] } };
+}
+
 @Injectable()
 export class PortfolioService {
   constructor(
@@ -45,7 +57,7 @@ export class PortfolioService {
     private propertyAlertModel: Model<PropertyAlertDocumentModel>,
   ) {}
 
-  async create(dto: CreatePortfolioDto) {
+  async create(dto: CreatePortfolioDto, userId?: string) {
     const p = dto.portfolio;
     const portfolioId = newPortfolioId();
     const document_requirements: DocumentRequirement[] =
@@ -69,15 +81,15 @@ export class PortfolioService {
         source: p.attributes?.source ?? 'ui',
       },
       status: 'active',
-      created_by: 'user_admin',
+      created_by: userId || LEGACY_OWNER,
     });
 
     return this.toResponse(doc);
   }
 
-  async findAll() {
+  async findAll(userId?: string) {
     const docs = await this.portfolioModel
-      .find()
+      .find(ownerFilter(userId))
       .sort({ createdAt: -1 })
       .exec();
     const ids = docs.map((d) => d.portfolioId);
@@ -168,9 +180,23 @@ export class PortfolioService {
     return n > 0;
   }
 
-  async findOne(portfolioIdRaw: string) {
+  /** True if the user owns the portfolio (or it is a legacy shared portfolio). */
+  async canUserAccess(
+    portfolioIdRaw: string,
+    userId?: string,
+  ): Promise<boolean> {
     const portfolioId = portfolioIdRaw.trim();
-    const doc = await this.portfolioModel.findOne({ portfolioId }).exec();
+    const n = await this.portfolioModel
+      .countDocuments({ portfolioId, ...ownerFilter(userId) })
+      .exec();
+    return n > 0;
+  }
+
+  async findOne(portfolioIdRaw: string, userId?: string) {
+    const portfolioId = portfolioIdRaw.trim();
+    const doc = await this.portfolioModel
+      .findOne({ portfolioId, ...ownerFilter(userId) })
+      .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
@@ -183,9 +209,11 @@ export class PortfolioService {
     };
   }
 
-  async update(portfolioIdRaw: string, dto: CreatePortfolioDto) {
+  async update(portfolioIdRaw: string, dto: CreatePortfolioDto, userId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    const doc = await this.portfolioModel.findOne({ portfolioId }).exec();
+    const doc = await this.portfolioModel
+      .findOne({ portfolioId, ...ownerFilter(userId) })
+      .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
@@ -226,9 +254,9 @@ export class PortfolioService {
    * Items deleted when removing a portfolio (leases + amendments).
    * Other collections (tasks, property alerts, properties) are removed without listing every row.
    */
-  async getDeletionImpact(portfolioIdRaw: string) {
+  async getDeletionImpact(portfolioIdRaw: string, userId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.existsByPortfolioId(portfolioId))) {
+    if (!(await this.canUserAccess(portfolioId, userId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
@@ -276,9 +304,9 @@ export class PortfolioService {
     };
   }
 
-  async remove(portfolioIdRaw: string) {
+  async remove(portfolioIdRaw: string, userId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.existsByPortfolioId(portfolioId))) {
+    if (!(await this.canUserAccess(portfolioId, userId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
