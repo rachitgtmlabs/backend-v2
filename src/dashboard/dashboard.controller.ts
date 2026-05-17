@@ -1,7 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
+@UseGuards(PortfolioAccessGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
