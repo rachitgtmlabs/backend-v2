@@ -108,12 +108,27 @@ Look for:
 - Conflicts between amendment language and original lease
 - New provisions that were missing before
 - New tenant concerns raised by amendment terms
+- New or modified CAM rules/clauses in the amendment
 
 For each category (ambiguities, conflicts, missingProvisions, tenantConcerns):
 - Only include items that are NEW or CHANGED by this amendment
 - Do not repeat issues from the original lease that haven't changed
 
-If no new CAM-related issues are found, return an object with empty arrays.`;
+For camRules:
+- Include only rules NEW or MATERIALLY CHANGED by this amendment
+- Assign new ruleIds continuing from the previous highest (e.g. if previous ended at R-8, start at R-9)
+- Use the same ruleCategory enum values as the base schema
+
+For flagsAndObservations:
+- Provide brief string-level notes only for NEW observations introduced by this amendment
+
+For summary:
+- Recalculate totalRulesExtracted as the combined count (previous + new delta rules)
+- Update rulesByCategory counts to reflect added rules only
+- Reassess overallTenantRiskAssessment based on the amendment's impact
+- Update keyTenantProtections and keyTenantExposures to reflect any changes from this amendment
+
+If no new CAM-related issues are found, return an object with empty arrays and zeroed counts.`;
 
 /**
  * Build the user message with previous version context for delta extraction

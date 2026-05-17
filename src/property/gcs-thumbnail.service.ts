@@ -101,6 +101,46 @@ export class GcsThumbnailService {
   }
 
   /**
+   * Uploads a document (PDF) to GCS under `documents/{subfolder}/{timestamp}-{filename}`.
+   * Returns the GCS object path on success, null if GCS is not configured.
+   */
+  async uploadDocument(
+    subfolder: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType = 'application/pdf',
+  ): Promise<string | null> {
+    if (!this.bucketName()) {
+      this.logger.debug('GCS_BUCKET unset; document not uploaded');
+      return null;
+    }
+    if (!buffer?.length) {
+      return null;
+    }
+    const storage = this.getClient();
+    if (!storage) {
+      return null;
+    }
+    const safeBase = basename(originalName || 'document').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_',
+    );
+    const objectPath = `documents/${subfolder}/${Date.now()}-${safeBase}`;
+    const gcsFile = storage.bucket(this.bucketName()!).file(objectPath);
+    try {
+      await gcsFile.save(buffer, {
+        contentType: mimeType,
+        resumable: false,
+        metadata: { cacheControl: 'private, max-age=3600' },
+      });
+    } catch (err) {
+      this.logger.error('GCS document upload failed', err);
+      throw err;
+    }
+    return objectPath;
+  }
+
+  /**
    * Downloads a file from GCS by object path and returns buffer + content type.
    */
   async downloadFile(

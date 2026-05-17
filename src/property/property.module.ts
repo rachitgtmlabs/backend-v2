@@ -26,6 +26,6 @@ import { Property, PropertySchema } from './schemas/property.schema';
   ],
   controllers: [PropertyController],
   providers: [PropertyService, GcsThumbnailService],
-  exports: [PropertyService],
+  exports: [PropertyService, GcsThumbnailService],
 })
 export class PropertyModule {}

@@ -100,6 +100,7 @@ export class LeaseService {
       file_name: dto.file_name,
       lease_information: dto.lease_information,
       analysis: dto.analysis,
+      gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
     });
 
@@ -172,6 +173,7 @@ export class LeaseService {
       lease_information: dto.lease_information,
       analysis: dto.analysis,
       amendment_version: 0,
+      gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
     });
 

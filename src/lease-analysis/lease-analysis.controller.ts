@@ -41,10 +41,6 @@ export class LeaseAnalysisController {
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
     const bytes = file?.size ?? file?.buffer?.length ?? 0;
-    // eslint-disable-next-line no-console -- route hit marker for operators
-    console.log(
-      `[LeaseAnalysisController] POST /v1/lease-analysis/stream multipart field=assets bytes=${bytes}`,
-    );
     this.logger.log(`lease-analysis stream request bytes=${bytes}`);
 
     if (!file?.buffer && !file?.path) {

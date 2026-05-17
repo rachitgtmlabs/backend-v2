@@ -31,10 +31,6 @@ export class AmendmentAnalysisController {
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
     const bytes = file?.size ?? file?.buffer?.length ?? 0;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[AmendmentAnalysisController] POST /v1/amendment-analysis/stream multipart field=assets bytes=${bytes} lease_id=${body.lease_id}`,
-    );
     this.logger.log(`amendment-analysis stream request bytes=${bytes} lease_id=${body.lease_id}`);
 
     if (!file?.buffer && !file?.path) {

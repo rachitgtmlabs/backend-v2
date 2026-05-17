@@ -14,7 +14,6 @@ import {
   LEASE_ANALYSIS_SYSTEM_PROMPT,
   SECTION_USER_TAIL,
 } from './lease-analysis-section-prompts';
-import { writeLeaseAnalysisTraceFile } from './lease-analysis-debug-trace';
 import { parseJsonFromLlm } from './json-parse.util';
 import {
   CAM_REVIEW_JSON_SCHEMA,
@@ -22,10 +21,6 @@ import {
   CAM_REVIEW_SCHEMA_NAME,
 } from './cam-review-json-schema';
 import { CAM_REVIEW_USER_TAIL } from './cam-review-prompts';
-
-export interface GroqSectionExtractOptions {
-  traceId?: string;
-}
 
 export interface ProposeComplianceReplacementInput {
   riskTitle: string;
@@ -127,7 +122,6 @@ export class GroqLeaseAnalysisService {
   async extractSectionJson(
     section: LeaseAnalysisSection,
     ocrPlainText: string,
-    options?: GroqSectionExtractOptions,
   ): Promise<unknown> {
     if (!this.client) {
       throw new ServiceUnavailableException(
@@ -141,38 +135,11 @@ export class GroqLeaseAnalysisService {
     const strict = this.jsonSchemaStrictEnabled();
     const userContent = this.buildUserContent(ocrPlainText, section);
     const schemaBody = LEASE_ANALYSIS_JSON_SCHEMA[section];
-    const traceId = options?.traceId;
 
     const messages = [
       { role: 'system' as const, content: LEASE_ANALYSIS_SYSTEM_PROMPT }, // cache_control: { type: 'ephemeral' } },
       { role: 'user' as const, content: userContent },
     ];
-
-    if (traceId) {
-      const inputPath = await writeLeaseAnalysisTraceFile(
-        traceId,
-        `${section}-groq-input.json`,
-        {
-          section,
-          model,
-          temperature: 0.1,
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: `lease_analysis_${section}`,
-              description: LEASE_ANALYSIS_SCHEMA_DESCRIPTION[section],
-              strict,
-              schema: schemaBody,
-            },
-          },
-          messages,
-        },
-      );
-      // eslint-disable-next-line no-console -- explicit operator-visible stage marker
-      console.log(
-        `[LeaseAnalysis] Groq request | traceId=${traceId} | section=${section} | inputFile=${inputPath ?? '(tracing disabled)'}`,
-      );
-    }
 
     const completion = await this.runGroqWithBackoff(
       `chat.completions.create section=${section}`,
@@ -223,25 +190,6 @@ export class GroqLeaseAnalysisService {
       throw err;
     }
 
-    if (traceId) {
-      const outPath = await writeLeaseAnalysisTraceFile(
-        traceId,
-        `${section}-groq-output.json`,
-        {
-          section,
-          model: completion.model ?? model,
-          id: completion.id,
-          usage: completion.usage,
-          rawContent: raw,
-          parsed,
-        },
-      );
-      // eslint-disable-next-line no-console -- explicit operator-visible stage marker
-      console.log(
-        `[LeaseAnalysis] Groq response | traceId=${traceId} | section=${section} | outputFile=${outPath ?? '(tracing disabled)'}`,
-      );
-    }
-
     return parsed;
   }
 
@@ -249,10 +197,7 @@ export class GroqLeaseAnalysisService {
     return `${ocrPlainText}\n\n---\n\n${CAM_REVIEW_USER_TAIL}`;
   }
 
-  async extractCamReviewJson(
-    ocrPlainText: string,
-    options?: GroqSectionExtractOptions,
-  ): Promise<unknown> {
+  async extractCamReviewJson(ocrPlainText: string): Promise<unknown> {
     if (!this.client) {
       throw new ServiceUnavailableException(
         'GROQ_API_KEY is not configured; cannot run lease analysis.',
@@ -263,39 +208,12 @@ export class GroqLeaseAnalysisService {
       this.config.get<string>('GROQ_MODEL')?.trim() ?? 'openai/gpt-oss-120b';
     const strict = this.jsonSchemaStrictEnabled();
     const userContent = this.buildCamReviewUserContent(ocrPlainText);
-    const traceId = options?.traceId;
     const section = 'camReview' as const;
 
     const messages = [
       { role: 'system' as const, content: LEASE_ANALYSIS_SYSTEM_PROMPT },
       { role: 'user' as const, content: userContent },
     ];
-
-    if (traceId) {
-      const inputPath = await writeLeaseAnalysisTraceFile(
-        traceId,
-        'camReview-groq-input.json',
-        {
-          section,
-          model,
-          temperature: 0.1,
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: CAM_REVIEW_SCHEMA_NAME,
-              description: CAM_REVIEW_SCHEMA_DESCRIPTION,
-              strict,
-              schema: CAM_REVIEW_JSON_SCHEMA,
-            },
-          },
-          messages,
-        },
-      );
-      // eslint-disable-next-line no-console -- explicit operator-visible stage marker
-      console.log(
-        `[LeaseAnalysis] Groq request | traceId=${traceId} | section=camReview | inputFile=${inputPath ?? '(tracing disabled)'}`,
-      );
-    }
 
     const completion = await this.runGroqWithBackoff(
       'chat.completions.create section=camReview',
@@ -330,25 +248,6 @@ export class GroqLeaseAnalysisService {
         `JSON parse failed for camReview: ${raw.slice(0, 800)}`,
       );
       throw err;
-    }
-
-    if (traceId) {
-      const outPath = await writeLeaseAnalysisTraceFile(
-        traceId,
-        'camReview-groq-output.json',
-        {
-          section,
-          model: completion.model ?? model,
-          id: completion.id,
-          usage: completion.usage,
-          rawContent: raw,
-          parsed,
-        },
-      );
-      // eslint-disable-next-line no-console -- explicit operator-visible stage marker
-      console.log(
-        `[LeaseAnalysis] Groq response | traceId=${traceId} | section=camReview | outputFile=${outPath ?? '(tracing disabled)'}`,
-      );
     }
 
     return parsed;
