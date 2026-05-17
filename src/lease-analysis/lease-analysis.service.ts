@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { DraftAddendumDto } from './dto/draft-addendum.dto';
 import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
@@ -23,6 +24,7 @@ export class LeaseAnalysisService {
   constructor(
     private readonly ocr: OcrExtractionBridgeService,
     private readonly groq: GroqLeaseAnalysisService,
+    private readonly gcs: GcsThumbnailService,
   ) {}
 
   async proposeComplianceReplacement(
@@ -90,15 +92,11 @@ export class LeaseAnalysisService {
     }
 
     const traceId = `${Date.now()}_${randomUUID().slice(0, 8)}`;
-    // eslint-disable-next-line no-console -- explicit operator-visible stage marker
-    console.log(
-      `[LeaseAnalysis] OCR stage complete | traceId=${traceId} | chars=${ocrText.length} | preview=${JSON.stringify(ocrText.slice(0, 120))}${ocrText.length > 120 ? '…' : ''}`,
-    );
     this.logger.log(
       `OCR text retrieved successfully traceId=${traceId} length=${ocrText.length}`,
     );
 
-    // Fail Groq only after OCR succeeded so logs/traces show OCR stage even when API key is missing.
+    // Fail Groq only after OCR succeeded so structured logs still capture OCR stage when the API key is missing.
     this.groq.ensureConfigured();
 
     res.setHeader('Content-Type', 'application/x-ndjson');
@@ -107,9 +105,7 @@ export class LeaseAnalysisService {
 
     for (const section of STREAM_SECTION_ORDER) {
       try {
-        const data = await this.groq.extractSectionJson(section, ocrText, {
-          traceId,
-        });
+        const data = await this.groq.extractSectionJson(section, ocrText);
         res.write(JSON.stringify({ section, data }) + '\n');
       } catch (err) {
         this.logger.error(`Groq failed for ${section}`, err);
@@ -129,9 +125,7 @@ export class LeaseAnalysisService {
     }
 
     try {
-      const camData = await this.groq.extractCamReviewJson(ocrText, {
-        traceId,
-      });
+      const camData = await this.groq.extractCamReviewJson(ocrText);
       res.write(
         JSON.stringify({ section: 'camReview', data: camData }) + '\n',
       );
@@ -148,6 +142,23 @@ export class LeaseAnalysisService {
       );
       res.end();
       return;
+    }
+
+    // Upload original PDF to GCS under documents/leases/
+    try {
+      const gcsPath = await this.gcs.uploadDocument(
+        'leases',
+        buffer,
+        file.originalname || file.filename || 'lease.pdf',
+        file.mimetype || 'application/pdf',
+      );
+      if (gcsPath) {
+        res.write(
+          JSON.stringify({ section: 'document_stored', data: { gcs_path: gcsPath } }) + '\n',
+        );
+      }
+    } catch (err) {
+      this.logger.warn('GCS document upload failed (non-fatal)', err);
     }
 
     res.end();

@@ -58,6 +58,10 @@ export class Amendment {
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   analysis: Record<string, unknown>;
 
+  /** GCS object path of the original amendment PDF (e.g. documents/amendments/…). */
+  @Prop({ type: String, default: null })
+  gcs_document_path: string | null;
+
   /**
    * Risk-driven amendment drafts the user authored during analysis of this
    * amendment document. Stored alongside the amendment so the full markdown

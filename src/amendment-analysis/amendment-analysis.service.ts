@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { STREAM_SECTION_ORDER } from '../lease-analysis/lease-analysis.mocks';
 import { GroqAmendmentAnalysisService } from './groq-amendment-analysis.service';
 import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bridge.service';
@@ -29,6 +30,7 @@ export class AmendmentAnalysisService {
   constructor(
     private readonly ocr: OcrExtractionBridgeService,
     private readonly groq: GroqAmendmentAnalysisService,
+    private readonly gcs: GcsThumbnailService,
   ) {}
 
   /**
@@ -59,10 +61,6 @@ export class AmendmentAnalysisService {
     }
 
     const traceId = `amd_${Date.now()}_${randomUUID().slice(0, 8)}`;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[AmendmentAnalysis] OCR stage complete | traceId=${traceId} | chars=${ocrText.length} | preview=${JSON.stringify(ocrText.slice(0, 120))}${ocrText.length > 120 ? '…' : ''}`,
-    );
     this.logger.log(
       `OCR text retrieved successfully traceId=${traceId} length=${ocrText.length}`,
     );
@@ -78,7 +76,6 @@ export class AmendmentAnalysisService {
       try {
         const previousSectionJson = previousAnalysis[section] ?? {};
         const data = await this.groq.extractSectionDelta(section, ocrText, {
-          traceId,
           previousSectionJson,
         });
         res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
@@ -101,9 +98,10 @@ export class AmendmentAnalysisService {
     // Process CAM review delta
     try {
       const previousCamJson = previousAnalysis.camReview ?? {};
-      const camData = await this.groq.extractCamReviewDelta(ocrText, previousCamJson, {
-        traceId,
-      });
+      const camData = await this.groq.extractCamReviewDelta(
+        ocrText,
+        previousCamJson,
+      );
       res.write(
         JSON.stringify({ section: 'camReview', data: camData, isDelta: true }) + '\n',
       );
@@ -119,6 +117,23 @@ export class AmendmentAnalysisService {
       );
       res.end();
       return;
+    }
+
+    // Upload original PDF to GCS under documents/amendments/
+    try {
+      const gcsPath = await this.gcs.uploadDocument(
+        'amendments',
+        buffer,
+        file.originalname || file.filename || 'amendment.pdf',
+        file.mimetype || 'application/pdf',
+      );
+      if (gcsPath) {
+        res.write(
+          JSON.stringify({ section: 'document_stored', data: { gcs_path: gcsPath } }) + '\n',
+        );
+      }
+    } catch (err) {
+      this.logger.warn('GCS document upload failed (non-fatal)', err);
     }
 
     res.end();

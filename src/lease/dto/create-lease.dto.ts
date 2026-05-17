@@ -32,6 +32,11 @@ export class CreateLeaseDto {
   @IsObject()
   analysis: Record<string, unknown>;
 
+  /** GCS object path of the uploaded PDF (returned by the analysis stream). */
+  @IsOptional()
+  @IsString()
+  gcs_document_path?: string;
+
   /**
    * Optional structured amendment drafts the user authored during analysis.
    * Persisted on the resulting Lease/Amendment document.

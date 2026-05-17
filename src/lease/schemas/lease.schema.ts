@@ -37,6 +37,10 @@ export class Lease {
   @Prop({ type: Number, default: 0, index: true })
   amendment_version: number;
 
+  /** GCS object path of the original lease PDF (e.g. documents/leases/…). */
+  @Prop({ type: String, default: null })
+  gcs_document_path: string | null;
+
   /**
    * Risk-driven amendment drafts the user authored during analysis.
    * Full structured content + markdown body so the data survives beyond the

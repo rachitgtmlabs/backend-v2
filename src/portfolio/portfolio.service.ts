@@ -81,13 +81,50 @@ export class PortfolioService {
       .sort({ createdAt: -1 })
       .exec();
     const ids = docs.map((d) => d.portfolioId);
-    const countByPortfolio = await this.countPropertiesByPortfolioIds(ids);
+    const [countByPortfolio, alertStatusByPortfolio] = await Promise.all([
+      this.countPropertiesByPortfolioIds(ids),
+      this.computeAlertStatusByPortfolioIds(ids),
+    ]);
     return {
       portfolios: docs.map((doc) => {
         const n = countByPortfolio.get(doc.portfolioId) ?? 0;
-        return this.toResponse(doc, n).portfolio;
+        const alertStatus = alertStatusByPortfolio.get(doc.portfolioId) ?? 'ok';
+        return { ...this.toResponse(doc, n).portfolio, alert_status: alertStatus };
       }),
     };
+  }
+
+  /**
+   * For each portfolio, compute a single status based on unresolved task alerts:
+   * - 'critical' if any unresolved critical alert exists
+   * - 'high' if any unresolved high/medium alert exists
+   * - 'ok' otherwise
+   */
+  private async computeAlertStatusByPortfolioIds(
+    portfolioIds: string[],
+  ): Promise<Map<string, 'critical' | 'high' | 'ok'>> {
+    const map = new Map<string, 'critical' | 'high' | 'ok'>();
+    if (portfolioIds.length === 0) return map;
+
+    const alerts = await this.taskAlertModel
+      .find({
+        portfolio_id: { $in: portfolioIds },
+        is_resolved: false,
+        severity: { $in: ['critical', 'high', 'medium'] },
+      })
+      .select({ portfolio_id: 1, severity: 1, _id: 0 })
+      .lean()
+      .exec();
+
+    for (const alert of alerts) {
+      const current = map.get(alert.portfolio_id);
+      if (alert.severity === 'critical') {
+        map.set(alert.portfolio_id, 'critical');
+      } else if (current !== 'critical') {
+        map.set(alert.portfolio_id, 'high');
+      }
+    }
+    return map;
   }
 
   /** Batch property counts for list views (one aggregation for all portfolios). */
