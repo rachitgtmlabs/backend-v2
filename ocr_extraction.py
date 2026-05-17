@@ -178,8 +178,7 @@ def extract_pdf(pdf_path: Path) -> dict[str, Any]:
             f"OCR extraction time: {elapsed_s:.2f}s (failed before completion).",
             file=sys.stderr,
         )
-        text = ""
-        pages = []
+        raise e
     else:
         elapsed_s = time.perf_counter() - ocr_started
         page_count = len(pages)
