@@ -70,7 +70,9 @@ export class AmendmentAnalysisService {
     this.groq.ensureConfigured();
 
     res.setHeader('Content-Type', 'application/x-ndjson');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     // Process each section, extracting delta by comparing against previous version
@@ -82,6 +84,7 @@ export class AmendmentAnalysisService {
           previousSectionJson,
         });
         res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
+        (res as any).flush?.();
       } catch (err) {
         this.logger.error(`Groq failed for amendment ${section}`, err);
         const message = err instanceof Error ? err.message : 'LLM request failed';
@@ -93,6 +96,7 @@ export class AmendmentAnalysisService {
             message,
           }) + '\n',
         );
+        (res as any).flush?.();
         res.end();
         return;
       }
@@ -107,6 +111,7 @@ export class AmendmentAnalysisService {
       res.write(
         JSON.stringify({ section: 'camReview', data: camData, isDelta: true }) + '\n',
       );
+      (res as any).flush?.();
     } catch (err) {
       this.logger.error('Groq failed for amendment camReview', err);
       const message = err instanceof Error ? err.message : 'LLM request failed';
@@ -117,6 +122,7 @@ export class AmendmentAnalysisService {
           message,
         }) + '\n',
       );
+      (res as any).flush?.();
       res.end();
       return;
     }

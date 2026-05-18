@@ -102,7 +102,9 @@ export class LeaseAnalysisService {
     this.groq.ensureConfigured();
 
     res.setHeader('Content-Type', 'application/x-ndjson');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     for (const section of STREAM_SECTION_ORDER) {
@@ -111,6 +113,7 @@ export class LeaseAnalysisService {
           traceId,
         });
         res.write(JSON.stringify({ section, data }) + '\n');
+        (res as any).flush?.();
       } catch (err) {
         this.logger.error(`Groq failed for ${section}`, err);
         const message =
@@ -123,6 +126,7 @@ export class LeaseAnalysisService {
             message,
           }) + '\n',
         );
+        (res as any).flush?.();
         res.end();
         return;
       }
@@ -135,6 +139,7 @@ export class LeaseAnalysisService {
       res.write(
         JSON.stringify({ section: 'camReview', data: camData }) + '\n',
       );
+      (res as any).flush?.();
     } catch (err) {
       this.logger.error('Groq failed for camReview', err);
       const message =
@@ -146,6 +151,7 @@ export class LeaseAnalysisService {
           message,
         }) + '\n',
       );
+      (res as any).flush?.();
       res.end();
       return;
     }
