@@ -6,14 +6,39 @@
  */
 import type { LeaseAnalysisSection } from './lease-analysis.mocks';
 
+const pageReference = {
+  type: 'object',
+  properties: {
+    page: { type: 'number' },
+    section: { type: 'string' },
+    highlightText: { type: 'string' },
+  },
+  required: ['page', 'section', 'highlightText'],
+  additionalProperties: false,
+} as const;
+
 const leaseField = {
   type: 'object',
   properties: {
     value: { type: 'string' },
     citation: { type: 'string' },
+    pageReference,
     amendments: { type: 'array', items: { type: 'string' } },
   },
-  required: ['value', 'citation', 'amendments'],
+  required: ['value', 'citation', 'pageReference', 'amendments'],
+  additionalProperties: false,
+} as const;
+
+const securityDepositField = {
+  type: 'object',
+  properties: {
+    amount: { type: 'string' },
+    conditions: { type: 'string' },
+    citation: { type: 'string' },
+    pageReference,
+    amendments: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['amount', 'conditions', 'citation', 'pageReference', 'amendments'],
   additionalProperties: false,
 } as const;
 
@@ -29,8 +54,9 @@ const executiveIdentitySchema = {
         leaseFrom: leaseField,
         leaseTo: leaseField,
         squareFeet: leaseField,
+        rentPerSqFt: leaseField,
         baseRent: leaseField,
-        securityDeposit: leaseField,
+        securityDeposit: securityDepositField,
         renewalOptions: leaseField,
       },
       required: [
@@ -39,6 +65,7 @@ const executiveIdentitySchema = {
         'leaseFrom',
         'leaseTo',
         'squareFeet',
+        'rentPerSqFt',
         'baseRent',
         'securityDeposit',
         'renewalOptions',
@@ -55,14 +82,19 @@ const financialStackSchema = {
   properties: {
     summaryCards: {
       type: 'array',
+      maxItems: 4,
       items: {
         type: 'object',
         properties: {
           title: { type: 'string' },
-          value: { type: 'string' },
-          subtext: { type: 'string' },
+          numericValue: { type: 'number' },
+          valueUnit: {
+            type: 'string',
+            enum: ['months', 'years', 'usd', 'percent', 'plain'],
+          },
+          citation: { type: 'string' },
         },
-        required: ['title', 'value', 'subtext'],
+        required: ['title', 'numericValue', 'valueUnit', 'citation'],
         additionalProperties: false,
       },
     },
@@ -122,13 +154,42 @@ const criticalDeadlinesSchema = {
             enum: ['high', 'medium', 'low'],
           },
           citation: { type: 'string' },
+          pageReference,
         },
-        required: ['title', 'date', 'severity', 'citation'],
+        required: ['title', 'date', 'severity', 'citation', 'pageReference'],
+        additionalProperties: false,
+      },
+    },
+    risks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          severity: {
+            type: 'string',
+            enum: ['critical', 'high', 'medium', 'low'],
+          },
+          contextSummary: { type: 'string' },
+          sectionReference: { type: 'string' },
+          analysisText: { type: 'string' },
+          citation: { type: 'string' },
+          pageReference,
+        },
+        required: [
+          'title',
+          'severity',
+          'contextSummary',
+          'sectionReference',
+          'analysisText',
+          'citation',
+          'pageReference',
+        ],
         additionalProperties: false,
       },
     },
   },
-  required: ['riskSummary', 'milestones'],
+  required: ['riskSummary', 'milestones', 'risks'],
   additionalProperties: false,
 } as const;
 
@@ -163,8 +224,9 @@ const legalNuancesSchema = {
       properties: {
         summary: { type: 'string' },
         citation: { type: 'string' },
+        pageReference,
       },
-      required: ['summary', 'citation'],
+      required: ['summary', 'citation', 'pageReference'],
       additionalProperties: false,
     },
     defaultRemedies: { type: 'array', items: { type: 'string' } },
@@ -176,8 +238,9 @@ const legalNuancesSchema = {
           label: { type: 'string' },
           detail: { type: 'string' },
           citation: { type: 'string' },
+          pageReference,
         },
-        required: ['label', 'detail', 'citation'],
+        required: ['label', 'detail', 'citation', 'pageReference'],
         additionalProperties: false,
       },
     },
@@ -208,9 +271,9 @@ export const LEASE_ANALYSIS_SCHEMA_DESCRIPTION: Record<
   executiveIdentity:
     'Parties, premises, lease identifiers, rent basis, deposit, renewal language.',
   financialStack:
-    'Summary KPI cards, rent schedule rows, and additional charges from the lease OCR.',
+    'Summary KPI cards (numeric values + unit + short citation), rent schedule rows, and additional charges from the lease OCR.',
   criticalDeadlines:
-    'Risk counts by severity and dated milestones with citations.',
+    'Risk counts by severity, dated milestones with citations, and deviation/risk narrative cards (risks array) with contextSummary, sectionReference, analysisText, and pageReference.',
   operationalGuardrails:
     'Use restrictions, alteration rules, and service-level expectations.',
   legalNuances:

@@ -49,7 +49,7 @@ export class GcsThumbnailService {
 
   /**
    * Uploads thumbnail bytes to GCS when GCS_BUCKET is set and credentials work.
-   * Returns null when no bucket is configured or the file is empty (no throw).
+   * Returns the GCS object path (not full URL) on success, null otherwise.
    */
   async uploadPropertyThumbnail(
     propertyId: string,
@@ -97,11 +97,35 @@ export class GcsThumbnailService {
       throw err;
     }
 
-    const encoded = objectPath
-      .split('/')
-      .map((seg) => encodeURIComponent(seg))
-      .join('/');
-    return `https://storage.googleapis.com/${this.bucketName()}/${encoded}`;
+    return objectPath;
+  }
+
+  /**
+   * Downloads a file from GCS by object path and returns buffer + content type.
+   */
+  async downloadFile(
+    objectPath: string,
+  ): Promise<{ buffer: Buffer; contentType: string } | null> {
+    if (!this.bucketName()) {
+      return null;
+    }
+
+    const storage = this.getClient();
+    if (!storage) {
+      return null;
+    }
+
+    try {
+      const bucket = storage.bucket(this.bucketName()!);
+      const file = bucket.file(objectPath);
+      const [buffer] = await file.download();
+      const [metadata] = await file.getMetadata();
+      const contentType = metadata.contentType || 'application/octet-stream';
+      return { buffer, contentType };
+    } catch (err) {
+      this.logger.error(`Failed to download ${objectPath} from GCS`, err);
+      return null;
+    }
   }
 
   private extFromMime(mime: string | undefined): string {

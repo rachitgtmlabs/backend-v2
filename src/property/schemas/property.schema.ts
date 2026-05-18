@@ -8,7 +8,7 @@ export type PropertyDocumentModel = HydratedDocument<Property> & {
 
 @Schema({ collection: 'properties', timestamps: true })
 export class Property {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: { unique: true, sparse: true } })
   propertyId: string;
 
   @Prop({ required: true, index: true })
@@ -29,3 +29,6 @@ export class Property {
 }
 
 export const PropertySchema = SchemaFactory.createForClass(Property);
+
+PropertySchema.index({ portfolio_id: 1, createdAt: -1 });
+PropertySchema.index({ portfolioId: 1, createdAt: -1 }, { sparse: true });

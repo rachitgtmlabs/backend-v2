@@ -8,6 +8,8 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { DraftAddendumDto } from './dto/draft-addendum.dto';
+import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
 import { GroqLeaseAnalysisService } from './groq-lease-analysis.service';
 import { OcrExtractionBridgeService } from './ocr-extraction-bridge.service';
@@ -23,9 +25,45 @@ export class LeaseAnalysisService {
     private readonly groq: GroqLeaseAnalysisService,
   ) {}
 
+  async proposeComplianceReplacement(
+    dto: ProposedClauseDto,
+  ): Promise<{ proposedText: string }> {
+    this.groq.ensureConfigured();
+    const proposedText = await this.groq.proposeComplianceReplacement({
+      riskTitle: dto.riskTitle.trim(),
+      originalClause: dto.originalClause.trim(),
+      jurisdictionSummary: dto.jurisdictionSummary.trim(),
+      ...(dto.existingProposedClause?.trim()
+        ? { existingProposedClause: dto.existingProposedClause.trim() }
+        : {}),
+      ...(dto.severity ? { severity: dto.severity } : {}),
+    });
+    return { proposedText };
+  }
+
+  async draftAddendum(dto: DraftAddendumDto): Promise<{ markdown: string }> {
+    this.groq.ensureConfigured();
+    const markdown = await this.groq.draftAddendumMarkdown({
+      riskTitle: dto.riskTitle.trim(),
+      originalClause: dto.originalClause.trim(),
+      proposedClause: dto.proposedClause.trim(),
+      jurisdictionSummary: dto.jurisdictionSummary.trim(),
+      ...(dto.severity ? { severity: dto.severity } : {}),
+      ...(dto.leaseTitle?.trim() ? { leaseTitle: dto.leaseTitle.trim() } : {}),
+      ...(dto.landlordName?.trim()
+        ? { landlordName: dto.landlordName.trim() }
+        : {}),
+      ...(dto.tenantName?.trim() ? { tenantName: dto.tenantName.trim() } : {}),
+      ...(dto.effectiveDate?.trim()
+        ? { effectiveDate: dto.effectiveDate.trim() }
+        : {}),
+    });
+    return { markdown };
+  }
+
   /**
-   * OCR (Python docTR) → five Groq JSON extractions streamed as NDJSON.
-   * OCR / config errors throw before the response is committed; Groq errors
+   * PDF text (PyMuPDF via Python script) → five Groq JSON extractions streamed as NDJSON.
+   * Extraction / config errors throw before the response is committed; Groq errors
    * emit a final `{ error, section, message }` line (HTTP status stays 200).
    */
   async streamNdjsonLeaseAnalysis(
@@ -37,7 +75,7 @@ export class LeaseAnalysisService {
     let ocrText: string;
     try {
       const ocr = await this.ocr.extractTextFromPdfBuffer(buffer);
-      ocrText = (ocr.full_text ?? '').trim();
+      ocrText = this.formatOcrTextWithPageMarkers(ocr);
     } catch (err) {
       this.logger.error(err);
       const msg =
@@ -90,7 +128,40 @@ export class LeaseAnalysisService {
       }
     }
 
+    try {
+      const camData = await this.groq.extractCamReviewJson(ocrText, {
+        traceId,
+      });
+      res.write(
+        JSON.stringify({ section: 'camReview', data: camData }) + '\n',
+      );
+    } catch (err) {
+      this.logger.error('Groq failed for camReview', err);
+      const message =
+        err instanceof Error ? err.message : 'LLM request failed';
+      res.write(
+        JSON.stringify({
+          error: 'groq_failed',
+          section: 'camReview',
+          message,
+        }) + '\n',
+      );
+      res.end();
+      return;
+    }
+
     res.end();
+  }
+
+  private formatOcrTextWithPageMarkers(
+    ocr: { full_text: string; pages?: Array<{ page_number: number; text: string }> },
+  ): string {
+    if (ocr.pages && ocr.pages.length > 0) {
+      return ocr.pages
+        .map((page) => `[PAGE ${page.page_number}]\n${page.text}`)
+        .join('\n\n');
+    }
+    return (ocr.full_text ?? '').trim();
   }
 
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {

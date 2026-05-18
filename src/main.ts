@@ -2,8 +2,15 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
+import { config as loadEnv } from 'dotenv';
+import { isAbsolute, join, resolve } from 'path';
 import { AppModule } from './app.module';
+
+loadEnv();
+const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+if (gac && !isAbsolute(gac)) {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = resolve(process.cwd(), gac);
+}
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

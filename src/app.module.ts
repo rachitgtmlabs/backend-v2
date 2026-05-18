@@ -1,11 +1,18 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MongoIndexesService } from './database/mongo-indexes.service';
+import { AmendmentAnalysisModule } from './amendment-analysis/amendment-analysis.module';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
-import { OcrWarmupService } from './ocr/ocr-warmup.service';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
+import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
+import { ChatModule } from './chat/chat.module';
+import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -20,7 +27,14 @@ import { PropertyModule } from './property/property.module';
     PropertyModule,
     LeaseModule,
     LeaseAnalysisModule,
+    AmendmentAnalysisModule,
+    TasksAlertsModule,
+    ChatModule,
+    GoogleCalendarModule,
+    DashboardModule,
+    AuthModule,
+    UsersModule,
   ],
-  providers: [OcrWarmupService],
+  providers: [MongoIndexesService],
 })
 export class AppModule {}

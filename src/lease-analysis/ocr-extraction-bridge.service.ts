@@ -1,12 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn, type ChildProcess } from 'node:child_process';
+import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
 export interface OcrExtractionJson {
   full_text: string;
+  pages?: Array<{ page_number: number; text: string }>;
   source_pdf?: string;
   det_arch?: string;
   reco_arch?: string;
@@ -14,17 +16,37 @@ export interface OcrExtractionJson {
 }
 
 /**
- * Runs {@link lease-backend-v2}/ocr_extraction.py via `uv run` on a PDF path.
- * `uv run` uses the project virtualenv — no manual activation needed.
+ * Runs ocr_extraction.py (Google Document AI) via `uv run` or a direct venv Python binary.
+ *
+ * Two modes controlled by the UV_PATH env var:
+ *   - UV_PATH unset / points to `uv` binary → spawn: uv run python ocr_extraction.py
+ *   - UV_PATH points to a Python binary (contains "python") → spawn: /path/to/python ocr_extraction.py
+ *     Use this on Cloud Run to avoid ADC credential issues with uv subprocess isolation.
+ *     Set UV_PATH=/app/.venv/bin/python to use the pre-built venv directly.
  */
 @Injectable()
-export class OcrExtractionBridgeService {
+export class OcrExtractionBridgeService implements OnModuleInit {
   private readonly logger = new Logger(OcrExtractionBridgeService.name);
 
   private readonly projectRoot = process.cwd();
   private readonly scriptPath = path.join(this.projectRoot, 'ocr_extraction.py');
 
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    const { bin, args } = this.resolveSpawnConfig(['--version']);
+    const child = spawn(bin, args, {
+      cwd: this.projectRoot,
+      env: { ...process.env },
+      stdio: 'ignore',
+    });
+    child.on('error', () => {});
+    child.on('close', (code) => {
+      if (code === 0) {
+        this.logger.log(`OCR environment pre-warmed successfully (bin: ${bin}).`);
+      }
+    });
+  }
 
   private ocrSubprocessTimeoutMs(): number {
     const raw = this.config.get<string>('OCR_SUBPROCESS_TIMEOUT_MS');
@@ -35,11 +57,30 @@ export class OcrExtractionBridgeService {
     return 900_000;
   }
 
-  /** Resolve uv binary: prefer UV_PATH env var, then /usr/local/bin/uv, then fallback to 'uv' on PATH */
-  private resolveUvBin(): string {
+  /**
+   * Resolve how to spawn the Python script.
+   *
+   * If UV_PATH contains "python" it is treated as a direct Python binary —
+   * the script and extra args are passed directly to it.
+   * Otherwise UV_PATH (or the discovered uv binary) is used with `uv run python`.
+   */
+  private resolveSpawnConfig(extraArgs: string[]): { bin: string; args: string[] } {
     const fromEnv = this.config.get<string>('UV_PATH');
-    if (fromEnv) return fromEnv;
-    return '/usr/local/bin/uv';
+
+    if (fromEnv && fromEnv.includes('python')) {
+      // Direct venv Python mode — no 'uv run python' wrapper
+      return { bin: fromEnv, args: extraArgs };
+    }
+
+    // uv mode
+    let uvBin: string;
+    if (fromEnv) {
+      uvBin = fromEnv;
+    } else {
+      const candidates = ['/opt/homebrew/bin/uv', '/usr/local/bin/uv'];
+      uvBin = candidates.find((c) => fsSync.existsSync(c)) ?? 'uv';
+    }
+    return { bin: uvBin, args: ['run', 'python', ...extraArgs] };
   }
 
   /**
@@ -51,7 +92,7 @@ export class OcrExtractionBridgeService {
     await fs.writeFile(pdfPath, buffer);
 
     try {
-      const stdout = await this.runUvPythonScript([pdfPath]);
+      const stdout = await this.runPythonScript([pdfPath]);
       return JSON.parse(stdout) as OcrExtractionJson;
     } catch (err) {
       if (err instanceof SyntaxError) {
@@ -65,7 +106,7 @@ export class OcrExtractionBridgeService {
 
   /** Run OCR on an existing PDF path (caller owns the file lifecycle). */
   async extractTextFromPdfPath(pdfPath: string): Promise<OcrExtractionJson> {
-    const stdout = await this.runUvPythonScript([pdfPath]);
+    const stdout = await this.runPythonScript([pdfPath]);
     try {
       return JSON.parse(stdout) as OcrExtractionJson;
     } catch {
@@ -74,28 +115,24 @@ export class OcrExtractionBridgeService {
     }
   }
 
-  private runUvPythonScript(args: string[]): Promise<string> {
+  private runPythonScript(args: string[]): Promise<string> {
     const timeoutMs = this.ocrSubprocessTimeoutMs();
     const startedAt = Date.now();
-    const uvBin = this.resolveUvBin();
+    const { bin, args: spawnArgs } = this.resolveSpawnConfig([this.scriptPath, ...args]);
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       const errChunks: Buffer[] = [];
 
       this.logger.log(
-        `OCR subprocess starting (${uvBin} run python …); timeoutMs=${timeoutMs}. Each request loads docTR weights in a new process — large PDFs can take many minutes.`,
+        `PDF text subprocess starting (${bin} ${spawnArgs[0]} …); timeoutMs=${timeoutMs}.`,
       );
 
-      const child: ChildProcess = spawn(
-        uvBin,
-        ['run', 'python', this.scriptPath, ...args],
-        {
-          cwd: this.projectRoot,
-          env: { ...process.env },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      );
+      const child: ChildProcess = spawn(bin, spawnArgs, {
+        cwd: this.projectRoot,
+        env: { ...process.env },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
       const killTimer = setTimeout(() => {
         this.logger.error(
@@ -108,7 +145,7 @@ export class OcrExtractionBridgeService {
         errChunks.push(d);
         const line = d.toString('utf8').trim();
         if (line) {
-          this.logger.log(`[docTR stderr] ${line}`);
+          this.logger.log(`[ocr_extraction stderr] ${line}`);
         }
       });
 
@@ -124,7 +161,7 @@ export class OcrExtractionBridgeService {
         clearTimeout(killTimer);
         reject(
           new Error(
-            `Failed to spawn OCR (is uv on PATH? tried: ${uvBin}). ${err.message}`,
+            `Failed to spawn OCR (tried: ${bin}). ${err.message}`,
           ),
         );
       });
@@ -135,8 +172,9 @@ export class OcrExtractionBridgeService {
         const stderr = Buffer.concat(errChunks).toString('utf8');
         const stdout = Buffer.concat(chunks).toString('utf8');
 
+        const seconds = (elapsedMs / 1000).toFixed(2);
         this.logger.log(
-          `OCR subprocess closed code=${code} elapsedMs=${elapsedMs}`,
+          `OCR subprocess finished — this run took ${seconds}s (${elapsedMs}ms), exit code ${code}.`,
         );
 
         if (code !== 0) {

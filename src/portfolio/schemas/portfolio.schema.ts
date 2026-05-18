@@ -65,8 +65,9 @@ const AttributesSchema = SchemaFactory.createForClass(Attributes);
 
 @Schema({ collection: 'portfolios', timestamps: true })
 export class Portfolio {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, index: { unique: true, sparse: true } })
   portfolioId: string;
+
 
   @Prop({ required: true })
   name: string;
@@ -103,3 +104,5 @@ export class Portfolio {
 }
 
 export const PortfolioSchema = SchemaFactory.createForClass(Portfolio);
+
+PortfolioSchema.index({ createdAt: -1 });

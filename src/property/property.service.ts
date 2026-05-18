@@ -7,7 +7,17 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { Amendment, AmendmentDocumentModel } from '../lease/schemas/amendment.schema';
+import { Lease, LeaseDocumentModel } from '../lease/schemas/lease.schema';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import {
+  PropertyAlert,
+  PropertyAlertDocumentModel,
+} from '../tasks-alerts/schemas/property-alert.schema';
+import {
+  TaskAlert,
+  TaskAlertDocumentModel,
+} from '../tasks-alerts/schemas/task-alert.schema';
 import { CreatePropertyFormDto } from './dto/create-property-form.dto';
 import { GcsThumbnailService } from './gcs-thumbnail.service';
 import { Property, PropertyDocumentModel } from './schemas/property.schema';
@@ -27,6 +37,14 @@ export class PropertyService {
   constructor(
     @InjectModel(Property.name)
     private propertyModel: Model<PropertyDocumentModel>,
+    @InjectModel(Lease.name)
+    private leaseModel: Model<LeaseDocumentModel>,
+    @InjectModel(Amendment.name)
+    private amendmentModel: Model<AmendmentDocumentModel>,
+    @InjectModel(TaskAlert.name)
+    private taskAlertModel: Model<TaskAlertDocumentModel>,
+    @InjectModel(PropertyAlert.name)
+    private propertyAlertModel: Model<PropertyAlertDocumentModel>,
     private readonly portfolioService: PortfolioService,
     private readonly gcsThumbnail: GcsThumbnailService,
     private readonly config: ConfigService,
@@ -44,10 +62,13 @@ export class PropertyService {
     let thumbnail_url: string | null = null;
 
     try {
-      thumbnail_url = await this.gcsThumbnail.uploadPropertyThumbnail(
+      const objectPath = await this.gcsThumbnail.uploadPropertyThumbnail(
         propertyId,
         file,
       );
+      if (objectPath) {
+        thumbnail_url = this.buildAssetProxyUrl(objectPath);
+      }
     } catch (err) {
       this.logger.warn(
         'GCS thumbnail upload failed; using default placeholder image',
@@ -81,7 +102,9 @@ export class PropertyService {
     }
 
     const docs = await this.propertyModel
-      .find({ portfolio_id: portfolioId })
+      .find({
+        $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+      })
       .sort({ createdAt: -1 })
       .exec();
 
@@ -90,13 +113,110 @@ export class PropertyService {
     };
   }
 
+  /**
+   * Leases & amendments linked to this property (for delete confirmation UI).
+   */
+  async getDeletionImpact(portfolioIdRaw: string, propertyIdRaw: string) {
+    const portfolioId = portfolioIdRaw.trim();
+    const propertyId = propertyIdRaw.trim();
+
+    if (!(await this.portfolioService.existsByPortfolioId(portfolioId))) {
+      throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
+    }
+    if (!(await this.belongsToPortfolio(propertyId, portfolioId))) {
+      throw new NotFoundException(`Property not found: ${propertyId}`);
+    }
+
+    const leaseRows = await this.leaseModel
+      .find({ portfolio_id: portfolioId, property_id: propertyId })
+      .select({
+        leaseId: 1,
+        file_name: 1,
+        property_id: 1,
+        status: 1,
+        _id: 0,
+      })
+      .lean()
+      .exec();
+
+    const amendmentRows = await this.amendmentModel
+      .find({ portfolio_id: portfolioId, property_id: propertyId })
+      .select({
+        amendmentId: 1,
+        lease_id: 1,
+        version: 1,
+        file_name: 1,
+        property_id: 1,
+        status: 1,
+        _id: 0,
+      })
+      .lean()
+      .exec();
+
+    return {
+      leases: leaseRows.map((l) => ({
+        id: l.leaseId,
+        file_name: l.file_name,
+        property_id: l.property_id,
+        status: l.status,
+      })),
+      amendments: amendmentRows.map((a) => ({
+        id: a.amendmentId,
+        lease_id: a.lease_id,
+        version: a.version,
+        file_name: a.file_name,
+        property_id: a.property_id,
+        status: a.status,
+      })),
+    };
+  }
+
+  /** Cascade-delete one property and its leases, amendments, tasks, and alerts. */
+  async remove(portfolioIdRaw: string, propertyIdRaw: string): Promise<void> {
+    const portfolioId = portfolioIdRaw.trim();
+    const propertyId = propertyIdRaw.trim();
+
+    if (!(await this.portfolioService.existsByPortfolioId(portfolioId))) {
+      throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
+    }
+    if (!(await this.belongsToPortfolio(propertyId, portfolioId))) {
+      throw new NotFoundException(`Property not found: ${propertyId}`);
+    }
+
+    await this.taskAlertModel
+      .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
+      .exec();
+    await this.propertyAlertModel
+      .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
+      .exec();
+    await this.amendmentModel
+      .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
+      .exec();
+    await this.leaseModel
+      .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
+      .exec();
+
+    const del = await this.propertyModel
+      .deleteOne({
+        propertyId,
+        $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+      })
+      .exec();
+    if (del.deletedCount === 0) {
+      throw new NotFoundException(`Property not found: ${propertyId}`);
+    }
+  }
+
   /** True if a property id exists and belongs to the given portfolio. */
   async belongsToPortfolio(
     propertyId: string,
     portfolioId: string,
   ): Promise<boolean> {
     const doc = await this.propertyModel
-      .findOne({ propertyId, portfolio_id: portfolioId })
+      .findOne({
+        propertyId,
+        $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+      })
       .exec();
     return doc != null;
   }
@@ -111,6 +231,18 @@ export class PropertyService {
       '3001';
     const base = fromEnv || `http://localhost:${port}`;
     return `${base}${PLACEHOLDER_THUMBNAIL_PATH}`;
+  }
+
+  /** Builds backend proxy URL for a GCS asset. */
+  private buildAssetProxyUrl(objectPath: string): string {
+    const raw = this.config.get<string>('API_PUBLIC_URL')?.trim();
+    const fromEnv = raw ? raw.replace(/\/$/, '') : '';
+    const port =
+      this.config.get<string>('PORT')?.trim() ||
+      process.env.PORT ||
+      '3001';
+    const base = fromEnv || `http://localhost:${port}`;
+    return `${base}/v1/properties/asset/${objectPath}`;
   }
 
   private toResponse(doc: PropertyDocumentModel) {
