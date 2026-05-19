@@ -67,12 +67,13 @@ export class AmendmentAnalysisService {
 
     this.groq.ensureConfigured();
 
+    res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
+    res.flushHeaders();
+    res.socket?.setNoDelay(true);
+    res.write('\n');
 
     // Process each section, extracting delta by comparing against previous version
     for (const section of STREAM_SECTION_ORDER) {
