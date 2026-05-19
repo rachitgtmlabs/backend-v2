@@ -137,38 +137,209 @@ export const MOCK_CRITICAL_DEADLINES = {
   ],
 };
 
+function pField(
+  value: string,
+  citation: string,
+  page: number,
+  section: string,
+  highlightText = '',
+  amendments: string[] = [],
+) {
+  return {
+    value,
+    citation,
+    pageReference: { page, section, highlightText },
+    amendments,
+  };
+}
+
 export const MOCK_OPERATIONAL_GUARDRAILS = {
-  useRestrictions: [
-    'Office use only; no heavy manufacturing',
-    'No hazardous materials without landlord consent',
-  ],
-  alterationRules: [
-    'Non-structural alterations under $25k: tenant notice only',
-    'Above threshold: landlord consent (not unreasonably withheld)',
-  ],
-  serviceLevels: [
-    { service: 'HVAC', hours: 'Business hours per building standard' },
-    { service: 'Janitorial', detail: '5x weekly, Class A spec' },
-  ],
+  use: {
+    synopsis: pField(
+      'Office and ancillary business uses only; no manufacturing, retail, or food service.',
+      'p. 14, §6.1',
+      14,
+      '§6.1',
+      'Tenant shall use the Premises',
+    ),
+    keyParameters: pField(
+      'Permitted use: General office\nProhibited: Retail, manufacturing, food service, medical\nChange of use: Landlord written consent (60 days)',
+      'p. 14, §6.1–6.2',
+      14,
+      '§6.1',
+    ),
+    narrative: pField(
+      "Tenant's use is strictly limited to general office and directly related ancillary purposes. Any change of use requires Landlord's prior written consent on 60 days' notice; Landlord may withhold consent in its reasonable discretion. Continued non-compliant use is a non-monetary default after a 30-day cure window.",
+      'p. 14, §6.1; p. 15, §6.3',
+      14,
+      '§6.1',
+    ),
+    certainty: 'high',
+  },
+  alterations: {
+    synopsis: pField(
+      'Non-structural alterations under $25k allowed with notice; everything else needs landlord consent.',
+      'p. 16, §7.2',
+      16,
+      '§7.2',
+    ),
+    keyParameters: pField(
+      'Notice-only threshold: $25,000 (non-structural)\nLandlord consent: required above threshold\nStructural alterations: never permitted\nRestoration on surrender: at Landlord election',
+      'p. 16, §7.2; p. 17, §7.4',
+      16,
+      '§7.2',
+    ),
+    narrative: pField(
+      'Tenant may perform non-structural alterations valued under $25,000 with 10 business days written notice. Above the threshold or anything structural requires Landlord consent (not to be unreasonably withheld for non-structural work). On surrender, Landlord may elect — at its sole discretion — to require removal and restoration to base-building condition, which can materially affect end-of-term cost.',
+      'p. 16, §7.2; p. 17, §7.4; p. 24, §11.6',
+      16,
+      '§7.2',
+    ),
+    certainty: 'high',
+  },
+  services: {
+    synopsis: pField(
+      'HVAC and elevators during business hours; janitorial 5x/week; after-hours services billed at tenant cost.',
+      'p. 19, §9.1',
+      19,
+      '§9.1',
+    ),
+    keyParameters: pField(
+      'HVAC hours: Mon–Fri 8a–6p, Sat 9a–1p\nAfter-hours HVAC: $65 / hour / zone\nJanitorial: 5 nights / week, Class A spec\nElevators: 24/7, one service car after hours\nUtility metering: submetered electricity',
+      'p. 19, §9.1; p. 20, §9.4',
+      19,
+      '§9.1',
+    ),
+    narrative: pField(
+      'Building services are delivered to Class A standard during stated business hours. After-hours HVAC is provided on request at the published rate, billed monthly as additional rent. Interruption of services for more than 5 consecutive business days triggers rent abatement under §9.5.',
+      'p. 19, §9.1–9.5',
+      19,
+      '§9.1',
+    ),
+    certainty: 'high',
+  },
+  signs: {
+    synopsis: pField(
+      'Building-standard suite signage only; exterior and lobby signs require landlord approval.',
+      'p. 22, §10.3',
+      22,
+      '§10.3',
+    ),
+    keyParameters: pField(
+      'Suite identification: building standard, landlord-provided\nLobby directory: one line included\nExterior / monument: landlord written approval required\nNon-conforming signs: removed at tenant cost',
+      'p. 22, §10.3',
+      22,
+      '§10.3',
+    ),
+    narrative: pField(
+      'Tenant receives one line on the lobby directory and a building-standard suite plaque at Landlord cost. Any signage beyond that — exterior, monument, window graphics — requires Landlord written approval and conformance with the Shopping Center sign criteria. Signs installed without approval may be removed by Landlord with the cost charged back to Tenant.',
+      'p. 22, §10.3; p. 23, §10.5',
+      22,
+      '§10.3',
+    ),
+    certainty: 'medium',
+  },
 };
 
 export const MOCK_LEGAL_NUANCES = {
-  assignmentSubletting: {
-    summary:
-      'Consent required; landlord may terminate or recapture on proposed assignment.',
-    citation: 'p. 18–19',
+  riskRegister: {
+    counts: { high: 3, medium: 2, low: 1 },
+    overallCertainty: 'medium',
+    sections: [
+      {
+        sectionName: 'Assignment, Subletting & Transfer',
+        issues: [
+          {
+            category: 'Subjectivity',
+            issueDescription:
+              "Landlord consent to assignment 'shall not be unreasonably withheld,' but the consent criteria include subjective assessments of the assignee's financial resources and operating experience.",
+            affectedClause: 'Section 8.1 Consent to Assignment',
+            citation: 'p. 18, §8.1',
+            pageReference: { page: 18, section: '§8.1', highlightText: 'shall not be unreasonably' },
+            certaintyLevel: 'high',
+            recommendedAction:
+              'Negotiate objective consent standards (e.g. minimum net worth multiple) and a 15-business-day deemed-approval window.',
+          },
+          {
+            category: 'Risk',
+            issueDescription:
+              'Landlord retains a recapture right on any proposed assignment or sublet of more than 50% of the premises, allowing Landlord to terminate the lease in lieu of consenting.',
+            affectedClause: 'Section 8.2 Recapture',
+            citation: 'p. 19, §8.2',
+            pageReference: { page: 19, section: '§8.2', highlightText: 'Landlord may, at its option' },
+            certaintyLevel: 'high',
+            recommendedAction:
+              "Carve out permitted transfers to affiliates and successor entities from Landlord's recapture right.",
+          },
+        ],
+      },
+      {
+        sectionName: 'Default & Remedies',
+        issues: [
+          {
+            category: 'Risk',
+            issueDescription:
+              "Monetary default cure period is only 5 business days after notice; non-monetary defaults have a 30-day cure period that runs even where the default is not curable within 30 days.",
+            affectedClause: 'Section 12.1 Events of Default',
+            citation: 'p. 24, §12.1',
+            pageReference: { page: 24, section: '§12.1', highlightText: 'If Tenant fails to pay' },
+            certaintyLevel: 'high',
+            recommendedAction:
+              'Extend monetary cure to 10 business days and add a "longer reasonable period" qualifier for non-monetary defaults that cannot be cured in 30 days.',
+          },
+          {
+            category: 'Ambiguity',
+            issueDescription:
+              "Lease references 'all remedies available at law or in equity' without enumerating any cap on Landlord's recovery of accelerated rent.",
+            affectedClause: 'Section 12.3 Remedies',
+            citation: 'p. 25, §12.3',
+            pageReference: { page: 25, section: '§12.3', highlightText: 'all remedies available' },
+            certaintyLevel: 'medium',
+            recommendedAction:
+              'Add an express mitigation obligation on Landlord and cap accelerated rent at present value.',
+          },
+        ],
+      },
+      {
+        sectionName: 'Non-Standard & Special Clauses',
+        issues: [
+          {
+            category: 'Non-Standard',
+            issueDescription:
+              "Half-mile radius restriction prevents Tenant or any affiliate from operating a competing flagship within 0.5 miles of the premises during the term.",
+            affectedClause: 'Section 14.4 Radius Restriction',
+            citation: 'p. 27, §14.4',
+            pageReference: { page: 27, section: '§14.4', highlightText: 'within one-half (1/2) mile' },
+            certaintyLevel: 'high',
+            recommendedAction:
+              'Confirm scope of "affiliate"; carve out existing locations and online sales; consider sunset on radius after Year 5.',
+          },
+          {
+            category: 'Missing Exhibit',
+            issueDescription:
+              'Exhibit C "Permitted Encumbrances" is referenced in §3.1 but not attached to the version under review.',
+            affectedClause: 'Section 3.1 Title; Exhibit C',
+            citation: 'p. 6, §3.1',
+            pageReference: { page: 6, section: '§3.1', highlightText: 'subject to the matters' },
+            certaintyLevel: 'medium',
+            recommendedAction:
+              'Obtain and review Exhibit C before signing; confirm no encumbrance materially impairs Tenant\'s use.',
+          },
+          {
+            category: 'Subjectivity',
+            issueDescription:
+              "Right-of-First-Offer (ROFO) on adjacent suite is exercisable only if Tenant is 'in good standing' — undefined term.",
+            affectedClause: 'Section 15.2 ROFO',
+            citation: 'p. 29, §15.2',
+            pageReference: { page: 29, section: '§15.2', highlightText: 'in good standing' },
+            certaintyLevel: 'low',
+            recommendedAction:
+              'Define "good standing" as "no uncured monetary default" to avoid forfeiture on minor or alleged breaches.',
+          },
+        ],
+      },
+    ],
   },
-  defaultRemedies: [
-    '15-day notice to cure for monetary default',
-    '30-day notice for non-monetary (if curable)',
-  ],
-  oddClauses: [
-    {
-      label: 'Radius restriction',
-      detail: 'No competing flagship within 0.5 mi without consent',
-      citation: 'p. 21',
-    },
-  ],
 };
 
 const MOCKS: Record<LeaseAnalysisSection, unknown> = {

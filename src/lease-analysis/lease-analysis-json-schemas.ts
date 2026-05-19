@@ -193,59 +193,129 @@ const criticalDeadlinesSchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Operational Guardrails — misc-style structured provisions.
+ * Each topic (use / alterations / services / signs) carries:
+ *  - synopsis: one-line plain-English summary
+ *  - keyParameters: enumerated quantitative or rule parameters (thresholds, hours, fees)
+ *  - narrative: longer human explanation with caveats / context
+ *  - certainty: model's confidence that the OCR fully supports the extraction
+ */
+const certaintyEnum = {
+  type: 'string',
+  enum: ['low', 'medium', 'high'],
+} as const;
+
+const provisionField = {
+  type: 'object',
+  properties: {
+    value: { type: 'string' },
+    citation: { type: 'string' },
+    pageReference,
+    amendments: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['value', 'citation', 'pageReference', 'amendments'],
+  additionalProperties: false,
+} as const;
+
+const provisionTopic = {
+  type: 'object',
+  properties: {
+    synopsis: provisionField,
+    keyParameters: provisionField,
+    narrative: provisionField,
+    certainty: certaintyEnum,
+  },
+  required: ['synopsis', 'keyParameters', 'narrative', 'certainty'],
+  additionalProperties: false,
+} as const;
+
 const operationalGuardrailsSchema = {
   type: 'object',
   properties: {
-    useRestrictions: { type: 'array', items: { type: 'string' } },
-    alterationRules: { type: 'array', items: { type: 'string' } },
-    serviceLevels: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          service: { type: 'string' },
-          hours: { type: 'string' },
-          detail: { type: 'string' },
-        },
-        required: ['service', 'hours', 'detail'],
-        additionalProperties: false,
-      },
-    },
+    use: provisionTopic,
+    alterations: provisionTopic,
+    services: provisionTopic,
+    signs: provisionTopic,
   },
-  required: ['useRestrictions', 'alterationRules', 'serviceLevels'],
+  required: ['use', 'alterations', 'services', 'signs'],
+  additionalProperties: false,
+} as const;
+
+/**
+ * Legal Nuances — audit-style structured risk register.
+ * Each issue is a flag that needs human review, grouped by section.
+ */
+const riskIssue = {
+  type: 'object',
+  properties: {
+    category: {
+      type: 'string',
+      enum: [
+        'Ambiguity',
+        'Conflict',
+        'Risk',
+        'Subjectivity',
+        'Missing Exhibit',
+        'Dependency',
+        'Non-Standard',
+        'Inconsistency',
+      ],
+    },
+    issueDescription: { type: 'string' },
+    affectedClause: { type: 'string' },
+    citation: { type: 'string' },
+    pageReference,
+    certaintyLevel: certaintyEnum,
+    recommendedAction: { type: 'string' },
+  },
+  required: [
+    'category',
+    'issueDescription',
+    'affectedClause',
+    'citation',
+    'pageReference',
+    'certaintyLevel',
+    'recommendedAction',
+  ],
   additionalProperties: false,
 } as const;
 
 const legalNuancesSchema = {
   type: 'object',
   properties: {
-    assignmentSubletting: {
+    riskRegister: {
       type: 'object',
       properties: {
-        summary: { type: 'string' },
-        citation: { type: 'string' },
-        pageReference,
+        counts: {
+          type: 'object',
+          properties: {
+            high: { type: 'integer' },
+            medium: { type: 'integer' },
+            low: { type: 'integer' },
+          },
+          required: ['high', 'medium', 'low'],
+          additionalProperties: false,
+        },
+        overallCertainty: certaintyEnum,
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              sectionName: { type: 'string' },
+              issues: { type: 'array', items: riskIssue },
+            },
+            required: ['sectionName', 'issues'],
+            additionalProperties: false,
+          },
+        },
       },
-      required: ['summary', 'citation', 'pageReference'],
+      required: ['counts', 'overallCertainty', 'sections'],
       additionalProperties: false,
     },
-    defaultRemedies: { type: 'array', items: { type: 'string' } },
-    oddClauses: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          label: { type: 'string' },
-          detail: { type: 'string' },
-          citation: { type: 'string' },
-          pageReference,
-        },
-        required: ['label', 'detail', 'citation', 'pageReference'],
-        additionalProperties: false,
-      },
-    },
   },
-  required: ['assignmentSubletting', 'defaultRemedies', 'oddClauses'],
+  required: ['riskRegister'],
   additionalProperties: false,
 } as const;
 
@@ -275,7 +345,7 @@ export const LEASE_ANALYSIS_SCHEMA_DESCRIPTION: Record<
   criticalDeadlines:
     'Risk counts by severity, dated milestones with citations, and deviation/risk narrative cards (risks array) with contextSummary, sectionReference, analysisText, and pageReference.',
   operationalGuardrails:
-    'Use restrictions, alteration rules, and service-level expectations.',
+    'Structured per-topic provisions (use, alterations, services, signs) — each with synopsis, key parameters, narrative, and an extraction certainty level.',
   legalNuances:
-    'Assignment/subletting summary, default remedies, and unusual clauses.',
+    'Audit-style risk register: grouped flagged issues for human review, each with category, certainty level, citation, and a recommended next action.',
 };

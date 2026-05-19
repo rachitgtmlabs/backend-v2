@@ -36,8 +36,29 @@ export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
     'Section: Critical Deadlines. You MUST return a JSON object with exactly three properties: riskSummary (object with high/medium/low integer counts), milestones (array), and risks (array). For milestones: list material date-driven obligations with severity high|medium|low. CRITICAL DATE FORMAT: The "date" field MUST be an actual date in YYYY-MM-DD format (e.g., "2025-06-01") whenever a specific date is stated or can be calculated from the lease. If the lease states a relative formula (e.g., "210 days after execution") AND an execution/effective date is also stated, calculate and return the actual date. Only use a short description (max 50 chars) as a last resort when no date can be determined. Never return long explanatory text in the date field. For riskSummary: count the number of milestones at each severity level (e.g., if you have 5 high-severity milestones, set riskSummary.high to 5). For risks: provide deviation and risk analysis cards—each needs severity critical|high|medium|low (use critical for statutory exposure or severe market deviation), title, contextSummary (short lease fact), sectionReference (e.g. "Section 4.2"), analysisText (why it matters / statute or exposure), citation, and pageReference. If no deviations found, risks must be an empty array [].',
 
   operationalGuardrails:
-    'Section: Operational Guardrails. Capture permitted/prohibited uses, alteration and improvement rules, and stated building services (HVAC, janitorial, hours, etc.).',
+    'Section: Operational Guardrails. Produce structured per-topic provisions for FOUR topics — use, alterations, services, signs. ' +
+    'For EACH topic, populate three fields exactly: ' +
+    '(1) synopsis.value — one plain-English sentence (<=140 chars) capturing the rule (e.g. "Office and ancillary uses only; no manufacturing or retail."); ' +
+    '(2) keyParameters.value — a short newline-separated list of the concrete, quantitative or rule-level parameters that govern the topic (thresholds, dollar caps, business-hour ranges, approval timelines, day counts, percentages, named systems). Format as "Label: value" pairs, one per line. Use "" if no quantitative parameters exist; ' +
+    '(3) narrative.value — a 2-4 sentence operator-facing explanation: WHO must do WHAT, with WHICH consents/exceptions, and the practical operational consequence. Avoid restating the synopsis verbatim. ' +
+    'Topic scope: ' +
+    'use = permitted vs. prohibited uses, exclusivity, radius restrictions; ' +
+    'alterations = tenant alterations / improvements, consent thresholds, removal & restoration; ' +
+    'services = building services (HVAC, janitorial, security, elevators), hours of operation, after-hours fees, utility metering; ' +
+    'signs = signage rights, building standard requirements, exterior alterations. ' +
+    'For every field, populate citation, pageReference, and amendments (empty if none). Set the topic-level certainty to "high" only when the OCR directly states the rule, "medium" when inferred from related clauses, "low" when the OCR is silent or ambiguous — in which case use "" for value fields. NEVER invent parameters.',
 
   legalNuances:
-    'Section: Legal Nuances. Summarize assignment, subletting, and transfer provisions; default and remedy mechanics; and notable non-standard clauses (e.g. radius, exclusivity, ROFO).',
+    'Section: Legal Nuances. Produce an audit-style RISK REGISTER flagging items that require human legal review. Return riskRegister with three sub-fields: counts, overallCertainty, sections. ' +
+    'Organize issues into AT LEAST these three sections (add more only if material): ' +
+    '"Assignment, Subletting & Transfer", "Default & Remedies", "Non-Standard & Special Clauses" (radius, exclusivity, ROFO/ROFR, co-tenancy, holdover, kick-out, hazardous materials, indemnity carve-outs, etc.). ' +
+    'For EACH issue, populate: ' +
+    'category (one of: Ambiguity, Conflict, Risk, Subjectivity, Missing Exhibit, Dependency, Non-Standard, Inconsistency); ' +
+    'issueDescription (1-2 concise sentences naming the specific concern); ' +
+    'affectedClause (the lease section identifier, e.g. "Section 8.1 Consent to Assignment"); ' +
+    'citation (short, e.g. "p. 18" or "p. 18, §8.1"); pageReference; ' +
+    'certaintyLevel (high = clearly stated in OCR, medium = inferred, low = ambiguous OCR); ' +
+    'recommendedAction (a concrete next step for the legal reviewer — e.g. "Negotiate cap on landlord consent timeline" or "Confirm exhibit B is attached"). ' +
+    'Populate counts as the integer total of issues at each certaintyLevel across all sections (e.g. count.high = number of high-certainty issues). overallCertainty = the model\'s overall confidence in the register. ' +
+    'If a section has no issues, still include it with an empty issues array. NEVER invent issues without OCR grounding.',
 };

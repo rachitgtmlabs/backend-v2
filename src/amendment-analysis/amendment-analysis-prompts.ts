@@ -73,27 +73,33 @@ If no changes are found, return an object with empty milestones and risks arrays
 
   operationalGuardrails: `Section: Operational Guardrails (DELTA EXTRACTION)
 
-Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+The schema is four structured provision topics: use, alterations, services, signs. Each topic has synopsis, keyParameters, narrative (with citation + pageReference + amendments) and a certainty level.
+
+Compare the amendment against the PREVIOUS VALUES below. For each topic:
+- If the amendment MODIFIES the rule, fill that topic's synopsis/keyParameters/narrative with the NEW post-amendment statement and add a concise entry to the relevant field's amendments[] array describing the change (e.g. "Amendment 2: HVAC after-hours fee raised to $75/hr").
+- If the amendment is silent on a topic, return that topic with all field values as "" and certainty "low" (placeholder — the merger will keep the prior value).
 
 Common amendment changes to look for:
-- Expanded or restricted permitted uses
-- New prohibited uses
-- Modified alteration/improvement rules
-- Changed service levels or hours
+- Expanded or restricted permitted uses, new exclusivity/radius language (use)
+- Modified alteration consent thresholds or restoration obligations (alterations)
+- New service hours, after-hours fees, security/janitorial changes (services)
+- New signage rights or exterior alteration restrictions (signs)
 
-If no changes are found, return an object with empty arrays/objects matching the schema structure.`,
+If no changes are found at all, return all four topics with empty field values and certainty "low".`,
 
   legalNuances: `Section: Legal Nuances (DELTA EXTRACTION)
 
-Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+The schema is a riskRegister with counts, overallCertainty, and an array of sections containing issues (category, issueDescription, affectedClause, citation, pageReference, certaintyLevel, recommendedAction).
 
-Common amendment changes to look for:
-- Modified assignment/subletting terms
-- Changed default and remedy provisions
-- New or removed special clauses
-- Modified ROFO, exclusivity, or radius provisions
+Compare the amendment against the PREVIOUS VALUES below. Extract ONLY:
+- NEW issues introduced by the amendment language (e.g. amendment adds an exclusivity carve-out that is itself ambiguous)
+- MODIFIED prior issues that are no longer accurate after the amendment (include the updated version)
 
-If no changes are found, return an object with empty values matching the schema structure.`,
+For each new/changed issue, set affectedClause to the amendment's section reference and pageReference to the amendment PDF page. Group new issues under the appropriate existing section name where possible ("Assignment, Subletting & Transfer", "Default & Remedies", "Non-Standard & Special Clauses") so the merged register stays clean.
+
+Populate counts as the delta of issues being ADDED at each certainty level (the merger will combine with prior counts).
+
+If the amendment introduces no new legal-nuance issues, return riskRegister with counts {high:0, medium:0, low:0}, overallCertainty "low", and an empty sections array.`,
 };
 
 /**
