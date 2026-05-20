@@ -12,6 +12,7 @@ import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { DraftAddendumDto } from './dto/draft-addendum.dto';
 import { ProposedClauseDto } from './dto/proposed-clause.dto';
 import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
+import { OPERATIONAL_GUARDRAILS_TOPIC_KEYS } from './lease-analysis-json-schemas';
 import { GroqLeaseAnalysisService } from './groq-lease-analysis.service';
 import { OcrExtractionBridgeService } from './ocr-extraction-bridge.service';
 
@@ -109,7 +110,11 @@ export class LeaseAnalysisService {
 
     for (const section of STREAM_SECTION_ORDER) {
       try {
-        const data = await this.groq.extractSectionJson(section, ocrText);
+        const raw = await this.groq.extractSectionJson(section, ocrText);
+        const data =
+          section === 'operationalGuardrails'
+            ? this.pruneEmptyProvisionTopics(raw)
+            : raw;
         res.write(JSON.stringify({ section, data }) + '\n');
         (res as any).flush?.();
       } catch (err) {
@@ -181,6 +186,49 @@ export class LeaseAnalysisService {
         .join('\n\n');
     }
     return (ocr.full_text ?? '').trim();
+  }
+
+  /**
+   * Strip operationalGuardrails topics where the LLM returned only empty
+   * strings — these represent clauses the lease genuinely doesn't address.
+   * Groq strict mode forces every topic into the response shape; we omit
+   * them from the wire payload so the frontend (which filters truthy
+   * `data[topic]`) doesn't render empty cards for irrelevant clauses.
+   *
+   * A topic is "empty" when synopsis.value, keyParameters.value, and
+   * narrative.value are all empty strings (whitespace-only counts).
+   */
+  private pruneEmptyProvisionTopics(raw: unknown): unknown {
+    if (!raw || typeof raw !== 'object') return raw;
+    const source = raw as Record<string, unknown>;
+    const pruned: Record<string, unknown> = {};
+    for (const key of OPERATIONAL_GUARDRAILS_TOPIC_KEYS) {
+      const topic = source[key];
+      if (this.provisionTopicIsEmpty(topic)) continue;
+      pruned[key] = topic;
+    }
+    // Preserve any extra top-level keys the LLM may have added (defensive).
+    for (const [key, value] of Object.entries(source)) {
+      if ((OPERATIONAL_GUARDRAILS_TOPIC_KEYS as readonly string[]).includes(key))
+        continue;
+      pruned[key] = value;
+    }
+    return pruned;
+  }
+
+  private provisionTopicIsEmpty(topic: unknown): boolean {
+    if (!topic || typeof topic !== 'object') return true;
+    const t = topic as Record<string, unknown>;
+    const read = (field: unknown): string => {
+      if (!field || typeof field !== 'object') return '';
+      const v = (field as Record<string, unknown>).value;
+      return typeof v === 'string' ? v.trim() : '';
+    };
+    return (
+      read(t.synopsis) === '' &&
+      read(t.keyParameters) === '' &&
+      read(t.narrative) === ''
+    );
   }
 
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {

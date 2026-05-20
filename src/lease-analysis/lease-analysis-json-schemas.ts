@@ -335,17 +335,127 @@ const provisionTopic = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Operational Guardrails — 24 provision topics ported from legacy v1
+ * `otherLeaseProvisions`. The original four (use/alterations/services/
+ * signs) are kept; 20 new topics are added to mirror v1 coverage.
+ *
+ * Groq strict mode requires every property to be listed in `required`,
+ * so all 24 topics are in the schema. Topics that the lease does NOT
+ * address are still returned by the LLM (with empty value strings and
+ * certainty="low"), then stripped server-side before the stream event
+ * is emitted (see LeaseAnalysisService.pruneEmptyProvisionTopics).
+ */
 const operationalGuardrailsSchema = {
   type: 'object',
   properties: {
+    // Property Use & Operations (the original 4)
     use: provisionTopic,
     alterations: provisionTopic,
     services: provisionTopic,
     signs: provisionTopic,
+    // Term & Tenure
+    premisesAndTerm: provisionTopic,
+    holdover: provisionTopic,
+    expansionAndRelocation: provisionTopic,
+    rightOfFirstRefusalOffer: provisionTopic,
+    // Financial Obligations
+    taxes: provisionTopic,
+    operatingExpenses: provisionTopic,
+    insurance: provisionTopic,
+    brokerage: provisionTopic,
+    // Maintenance & Premises Rules
+    repairsAndMaintenance: provisionTopic,
+    parking: provisionTopic,
+    hazardousMaterials: provisionTopic,
+    rulesAndRegulations: provisionTopic,
+    // Access, Transfer & Tenancy
+    landlordsRightOfEntry: provisionTopic,
+    quietEnjoyment: provisionTopic,
+    assignmentAndSubletting: provisionTopic,
+    // Risk, Default & Recovery
+    defaultAndRemedies: provisionTopic,
+    landlordDefault: provisionTopic,
+    casualty: provisionTopic,
+    condemnation: provisionTopic,
+    liabilityAndIndemnification: provisionTopic,
+    liens: provisionTopic,
+    // Administrative & Closing
+    notices: provisionTopic,
+    estoppel: provisionTopic,
+    subordination: provisionTopic,
   },
-  required: ['use', 'alterations', 'services', 'signs'],
+  required: [
+    'use',
+    'alterations',
+    'services',
+    'signs',
+    'premisesAndTerm',
+    'holdover',
+    'expansionAndRelocation',
+    'rightOfFirstRefusalOffer',
+    'taxes',
+    'operatingExpenses',
+    'insurance',
+    'brokerage',
+    'repairsAndMaintenance',
+    'parking',
+    'hazardousMaterials',
+    'rulesAndRegulations',
+    'landlordsRightOfEntry',
+    'quietEnjoyment',
+    'assignmentAndSubletting',
+    'defaultAndRemedies',
+    'landlordDefault',
+    'casualty',
+    'condemnation',
+    'liabilityAndIndemnification',
+    'liens',
+    'notices',
+    'estoppel',
+    'subordination',
+  ],
   additionalProperties: false,
 } as const;
+
+/**
+ * Full list of operational-guardrails topic keys. Exposed so the
+ * service post-processing step can iterate them when pruning empty
+ * topics from the LLM response.
+ */
+export const OPERATIONAL_GUARDRAILS_TOPIC_KEYS = [
+  'use',
+  'alterations',
+  'services',
+  'signs',
+  'premisesAndTerm',
+  'holdover',
+  'expansionAndRelocation',
+  'rightOfFirstRefusalOffer',
+  'taxes',
+  'operatingExpenses',
+  'insurance',
+  'brokerage',
+  'repairsAndMaintenance',
+  'parking',
+  'hazardousMaterials',
+  'rulesAndRegulations',
+  'landlordsRightOfEntry',
+  'quietEnjoyment',
+  'assignmentAndSubletting',
+  'defaultAndRemedies',
+  'landlordDefault',
+  'casualty',
+  'condemnation',
+  'liabilityAndIndemnification',
+  'liens',
+  'notices',
+  'estoppel',
+  'subordination',
+] as const;
+
+export type OperationalGuardrailsTopicKey =
+  (typeof OPERATIONAL_GUARDRAILS_TOPIC_KEYS)[number];
 
 /**
  * Legal Nuances — audit-style structured risk register.
@@ -456,7 +566,7 @@ export const LEASE_ANALYSIS_SCHEMA_DESCRIPTION: Record<
   criticalDeadlines:
     'Risk counts by severity, dated milestones with citations, and deviation/risk narrative cards (risks array) with contextSummary, sectionReference, analysisText, and pageReference.',
   operationalGuardrails:
-    'Structured per-topic provisions (use, alterations, services, signs) — each with synopsis, key parameters, narrative, and an extraction certainty level.',
+    'Structured per-topic provisions across 24 topics covering use, term, financial, maintenance, access/transfer, risk/default, and administrative clauses. Each topic carries synopsis, key parameters, narrative, and an extraction certainty level. Topics not addressed by the lease are returned with empty values and pruned server-side.',
   legalNuances:
     'Audit-style risk register: grouped flagged issues for human review, each with category, certainty level, citation, and a recommended next action.',
 };

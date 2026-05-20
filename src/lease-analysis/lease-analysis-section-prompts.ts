@@ -53,17 +53,41 @@ export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
     'Section: Critical Deadlines. You MUST return a JSON object with exactly three properties: riskSummary (object with high/medium/low integer counts), milestones (array), and risks (array). For milestones: list material date-driven obligations with severity high|medium|low. CRITICAL DATE FORMAT: The "date" field MUST be an actual date in YYYY-MM-DD format (e.g., "2025-06-01") whenever a specific date is stated or can be calculated from the lease. If the lease states a relative formula (e.g., "210 days after execution") AND an execution/effective date is also stated, calculate and return the actual date. Only use a short description (max 50 chars) as a last resort when no date can be determined. Never return long explanatory text in the date field. For riskSummary: count the number of milestones at each severity level (e.g., if you have 5 high-severity milestones, set riskSummary.high to 5). For risks: provide deviation and risk analysis cards—each needs severity critical|high|medium|low (use critical for statutory exposure or severe market deviation), title, contextSummary (short lease fact), sectionReference (e.g. "Section 4.2"), analysisText (why it matters / statute or exposure), citation, and pageReference. If no deviations found, risks must be an empty array [].',
 
   operationalGuardrails:
-    'Section: Operational Guardrails. Produce structured per-topic provisions for FOUR topics — use, alterations, services, signs. ' +
-    'For EACH topic, populate three fields exactly: ' +
-    '(1) synopsis.value — one plain-English sentence (<=140 chars) capturing the rule (e.g. "Office and ancillary uses only; no manufacturing or retail."); ' +
-    '(2) keyParameters.value — a short newline-separated list of the concrete, quantitative or rule-level parameters that govern the topic (thresholds, dollar caps, business-hour ranges, approval timelines, day counts, percentages, named systems). Format as "Label: value" pairs, one per line. Use "" if no quantitative parameters exist; ' +
+    'Section: Operational Guardrails. Produce structured per-topic provisions across 24 topics. For EACH topic populate three fields exactly: ' +
+    '(1) synopsis.value — one plain-English sentence (<=140 chars) capturing the rule; ' +
+    '(2) keyParameters.value — a short newline-separated list of concrete, quantitative or rule-level parameters (thresholds, dollar caps, business-hour ranges, approval timelines, day counts, percentages, named systems). Format as "Label: value" pairs, one per line. Use "" if no quantitative parameters exist; ' +
     '(3) narrative.value — a 2-4 sentence operator-facing explanation: WHO must do WHAT, with WHICH consents/exceptions, and the practical operational consequence. Avoid restating the synopsis verbatim. ' +
-    'Topic scope: ' +
+    'Topic scope (all 24): ' +
     'use = permitted vs. prohibited uses, exclusivity, radius restrictions; ' +
     'alterations = tenant alterations / improvements, consent thresholds, removal & restoration; ' +
     'services = building services (HVAC, janitorial, security, elevators), hours of operation, after-hours fees, utility metering; ' +
-    'signs = signage rights, building standard requirements, exterior alterations. ' +
-    'For every field, populate citation, pageReference, and amendments (empty if none). Set the topic-level certainty to "high" only when the OCR directly states the rule, "medium" when inferred from related clauses, "low" when the OCR is silent or ambiguous — in which case use "" for value fields. NEVER invent parameters.',
+    'signs = signage rights, building-standard requirements, exterior alterations; ' +
+    'premisesAndTerm = lease term length, commencement, delivery condition, expiration; ' +
+    'holdover = holdover rent multiplier, conversion to month-to-month, Landlord remedies; ' +
+    'expansionAndRelocation = expansion options, ROFO on adjacent space, Landlord relocation rights; ' +
+    'rightOfFirstRefusalOffer = ROFR/ROFO on building sale or transfer; ' +
+    'taxes = property tax pass-through, pro-rata share, base year, reassessment; ' +
+    'operatingExpenses = CAM definition, reconciliation, caps, audit rights, gross-up, management fee; ' +
+    'insurance = required policy limits, additional insureds, waiver of subrogation; ' +
+    'brokerage = named brokers, commission obligations, mutual indemnity; ' +
+    'repairsAndMaintenance = Landlord-vs-Tenant repair split, response times; ' +
+    'parking = allocation, reserved/unreserved, pricing, visitor parking; ' +
+    'hazardousMaterials = prohibited substances, disclosure, indemnity, pre-existing conditions; ' +
+    'rulesAndRegulations = building rules, Landlord right to amend, enforcement; ' +
+    'landlordsRightOfEntry = access purposes, advance notice, emergencies, showings; ' +
+    'quietEnjoyment = quiet-enjoyment covenant, constructive eviction; ' +
+    'assignmentAndSubletting = consent standard, permitted transfers, profit share, recapture; ' +
+    'defaultAndRemedies = cure periods, acceleration, eviction, re-letting, mitigation, jury-trial waiver; ' +
+    'landlordDefault = Landlord cure period, Tenant self-help, offset, damage caps; ' +
+    'casualty = repair election, abatement, termination thresholds; ' +
+    'condemnation = total vs partial taking, award allocation, termination rights; ' +
+    'liabilityAndIndemnification = scope of mutual indemnities, gross-negligence carve-outs; ' +
+    'liens = mechanics-lien prohibition, bonding, statutory waivers; ' +
+    'notices = permitted delivery methods, notice addresses, effective dates; ' +
+    'estoppel = response window, deemed approval, SNDA cooperation; ' +
+    'subordination = subordination to existing/future mortgages, non-disturbance, attornment. ' +
+    'For every field populate citation, pageReference, and amendments (empty if none). Set topic-level certainty: "high" only when the OCR directly states the rule, "medium" when inferred from related clauses, "low" when the OCR is silent or ambiguous. ' +
+    'CRITICAL: When the lease is SILENT on a topic (e.g. no ROFR clause anywhere, no holdover provision), still include the topic in the response but set ALL field values (synopsis.value, keyParameters.value, narrative.value) to empty strings "" and certainty to "low". The backend will prune such topics before delivery. NEVER invent parameters.',
 
   legalNuances:
     'Section: Legal Nuances. Produce an audit-style RISK REGISTER flagging items that require human legal review. Return riskRegister with three sub-fields: counts, overallCertainty, sections. ' +
