@@ -26,6 +26,17 @@ Rules:
 
 /** Brief task lines only — schema lives in LEASE_ANALYSIS_JSON_SCHEMA. */
 export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
+  executiveSummary:
+    'Section: Executive Summary. Write a concise Markdown brief (200-350 words) summarizing this lease for a busy operator. ' +
+    'STRUCTURE: Open with a one-paragraph identification sentence stating term length (years), lease type (office / retail / industrial / etc.), parties (Landlord + Tenant), and premises (suite, building, square footage). ' +
+    'Then write THREE sub-sections using exactly these Markdown `###` headers in this order: ' +
+    '"### Headline economics" (3-4 bullets: base rent + escalators, pass-through costs (CAM/taxes/insurance), security deposit, any other material money facts); ' +
+    '"### Term & options" (2-3 bullets: commencement & expiration dates, renewal options, early-termination rights, expansion or ROFR options if any); ' +
+    '"### What to watch" (3-4 bullets: the most operationally important risks, deadlines, or unusual clauses an operator should know — late-fee escalation, missing CAM cap, holdover penalty, restoration obligation, etc.). ' +
+    'STYLE: Use `**bold**` for headline numbers and named clauses. Use plain `-` bullets (not numbered lists). Do NOT use headers other than `###`. Do NOT restate the schema fields. Do NOT write more than 350 words total. ' +
+    'Set `citation` to the most relevant single page/section reference for the headline identification (e.g. "p. 1, preamble" or "p. 1, §1.1") — short only. ' +
+    'Ground every claim in the OCR; if a fact (e.g. holdover) is not addressed in the lease, omit that bullet rather than invent.',
+
   executiveIdentity:
     'Section: Executive Identity. Extract ONLY the legal entity names for landlord/lessor (leaseFrom) and tenant/lessee (leaseTo) — return the company or person name only (e.g., "PH Office II, LLC" or "Northbrook Outfitters, Inc."), NOT descriptions, definitions, commencement date formulas, or explanatory text about them. Also extract property or suite, lease identifier, rentable area (square feet as number only), rent per square foot (rate only, e.g., "$52.00"), base rent description, security deposit (amount only in "amount" field, any conditions/notes in "conditions" field), and renewal/options language.',
 

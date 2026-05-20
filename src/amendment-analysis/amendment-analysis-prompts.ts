@@ -28,6 +28,14 @@ CRITICAL RULES:
  * Each prompt instructs the model to compare against the previous version and extract only changes.
  */
 export const AMENDMENT_SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
+  executiveSummary: `Section: Executive Summary (DELTA EXTRACTION)
+
+The amendment changes one or more facts in the original lease's executive summary. Produce a FRESH Markdown brief (200-350 words) reflecting the AMENDED state — incorporate the amendment's changes into headline economics, term & options, and what-to-watch.
+
+STRUCTURE: One-paragraph identification, then \`### Headline economics\`, \`### Term & options\`, \`### What to watch\` (same as the original summary prompt). Use \`**bold**\` for any value the amendment changed so readers can spot deltas at a glance.
+
+Set citation to the amendment page/section that drives the most material change. Ground every claim in the amendment + prior summary; do not invent.`,
+
   executiveIdentity: `Section: Executive Identity (DELTA EXTRACTION)
 
 Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.

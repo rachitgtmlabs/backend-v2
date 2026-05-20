@@ -42,6 +42,22 @@ const securityDepositField = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Executive Summary — markdown abstract rendered at the top of the
+ * Executive Identity tab. `value` is a Markdown string with `###` headers
+ * and bulleted lists (the frontend renders them with explicit styled
+ * components). `citation` is a short reference (e.g. "p. 1, preamble").
+ */
+const executiveSummarySchema = {
+  type: 'object',
+  properties: {
+    value: { type: 'string' },
+    citation: { type: 'string' },
+  },
+  required: ['value', 'citation'],
+  additionalProperties: false,
+} as const;
+
 /** Root shape matches frontend LeaseInfoResponse / MOCK_EXECUTIVE_IDENTITY. */
 const executiveIdentitySchema = {
   type: 'object',
@@ -324,6 +340,7 @@ export const LEASE_ANALYSIS_JSON_SCHEMA: Record<
   LeaseAnalysisSection,
   Record<string, unknown>
 > = {
+  executiveSummary: { ...executiveSummarySchema },
   executiveIdentity: {
     ...executiveIdentitySchema,
   },
@@ -338,6 +355,8 @@ export const LEASE_ANALYSIS_SCHEMA_DESCRIPTION: Record<
   LeaseAnalysisSection,
   string
 > = {
+  executiveSummary:
+    'Markdown executive brief (200-350 words): parties, premises, headline economics, term & options, and what to watch. Uses `###` section headers and bulleted lists.',
   executiveIdentity:
     'Parties, premises, lease identifiers, rent basis, deposit, renewal language.',
   financialStack:

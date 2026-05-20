@@ -14,6 +14,7 @@ import { GroqAmendmentAnalysisService } from './groq-amendment-analysis.service'
 import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bridge.service';
 
 export interface PreviousAnalysis {
+  executiveSummary?: unknown;
   executiveIdentity?: unknown;
   financialStack?: unknown;
   criticalDeadlines?: unknown;

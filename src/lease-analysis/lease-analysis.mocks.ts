@@ -1,6 +1,7 @@
 /** Mock payloads for streaming lease analysis (replace with real extraction later). */
 
 export type LeaseAnalysisSection =
+  | 'executiveSummary'
   | 'executiveIdentity'
   | 'financialStack'
   | 'criticalDeadlines'
@@ -14,6 +15,21 @@ function field(
 ): { value: string; citation: string; amendments: string[] } {
   return { value, citation, amendments };
 }
+
+export const MOCK_EXECUTIVE_SUMMARY = {
+  value: `This **10-year office lease** is between Hudson Realty Holdings LLC (Landlord) and Northwind Analytics Inc. (Tenant) for **Suite 1200, 450 Park Avenue**, an 18,450 rentable-sf premises.
+
+### Headline economics
+- Base rent starts at **$52.00 / rsf / year (~$79,950 / month)**.
+- Security deposit: **$239,850 (3 months)**.
+
+### Term & options
+- Two (2) successive **5-year renewal options** at fair market value.
+
+### What to watch
+- Confirm renewal-notice mechanics and FMV reset methodology before exercising.`,
+  citation: 'p. 1, preamble',
+};
 
 export const MOCK_EXECUTIVE_IDENTITY = {
   leaseInformation: {
@@ -343,6 +359,7 @@ export const MOCK_LEGAL_NUANCES = {
 };
 
 const MOCKS: Record<LeaseAnalysisSection, unknown> = {
+  executiveSummary: MOCK_EXECUTIVE_SUMMARY,
   executiveIdentity: MOCK_EXECUTIVE_IDENTITY,
   financialStack: MOCK_FINANCIAL_STACK,
   criticalDeadlines: MOCK_CRITICAL_DEADLINES,
@@ -350,7 +367,10 @@ const MOCKS: Record<LeaseAnalysisSection, unknown> = {
   legalNuances: MOCK_LEGAL_NUANCES,
 };
 
+// executiveSummary streams first so the user sees the narrative recap while
+// later sections are still extracting.
 export const STREAM_SECTION_ORDER: LeaseAnalysisSection[] = [
+  'executiveSummary',
   'executiveIdentity',
   'financialStack',
   'criticalDeadlines',
