@@ -3,6 +3,7 @@
 export type LeaseAnalysisSection =
   | 'executiveSummary'
   | 'executiveIdentity'
+  | 'spaceAndPremises'
   | 'financialStack'
   | 'criticalDeadlines'
   | 'operationalGuardrails'
@@ -48,6 +49,46 @@ export const MOCK_EXECUTIVE_IDENTITY = {
       'p. 12, §8.2',
     ),
   },
+};
+
+function pageRef(page: number, section: string, highlightText = '') {
+  return { page, section, highlightText };
+}
+
+function spaceField(value: string, citation: string, page = 0, section = '') {
+  return {
+    value,
+    citation,
+    pageReference: pageRef(page, section),
+    amendments: [] as string[],
+  };
+}
+
+export const MOCK_SPACE_AND_PREMISES = {
+  unit: spaceField('Suite 1200', 'p. 2, §1.1', 2, '§1.1'),
+  building: spaceField('450 Park Avenue', 'p. 2, §1.1', 2, '§1.1'),
+  premises: spaceField(
+    'Suite 1200, comprising 18,450 rentable sq. ft. on the 12th floor of 450 Park Avenue.',
+    'p. 2, Exhibit A',
+    2,
+    'Exhibit A',
+  ),
+  zipCode: spaceField('10022', 'p. 2, §1.1', 2, '§1.1'),
+  city: spaceField('New York', 'p. 2, §1.1', 2, '§1.1'),
+  state: spaceField('New York', 'p. 2, §1.1', 2, '§1.1'),
+  areaRentable: spaceField('18,450 sq. ft.', 'p. 3, §2.2', 3, '§2.2'),
+  areaUsable: spaceField('17,200 sq. ft.', 'p. 3, §2.2', 3, '§2.2'),
+  commonArea: spaceField('7.3% load factor', 'p. 3, §2.2', 3, '§2.2'),
+  parking: {
+    value: '4 unreserved spaces, included in rent',
+    citation: 'p. 14, §11.2',
+    pageReference: pageRef(14, '§11.2'),
+    amendments: [] as string[],
+    type: spaceField('Covered garage, non-exclusive', 'p. 14, §11.2', 14, '§11.2'),
+  },
+  storageArea: spaceField('', '', 0, ''),
+  status: spaceField('Delivered turnkey', 'p. 4, §3.1', 4, '§3.1'),
+  notes: spaceField('', '', 0, ''),
 };
 
 export const MOCK_FINANCIAL_STACK = {
@@ -361,17 +402,20 @@ export const MOCK_LEGAL_NUANCES = {
 const MOCKS: Record<LeaseAnalysisSection, unknown> = {
   executiveSummary: MOCK_EXECUTIVE_SUMMARY,
   executiveIdentity: MOCK_EXECUTIVE_IDENTITY,
+  spaceAndPremises: MOCK_SPACE_AND_PREMISES,
   financialStack: MOCK_FINANCIAL_STACK,
   criticalDeadlines: MOCK_CRITICAL_DEADLINES,
   operationalGuardrails: MOCK_OPERATIONAL_GUARDRAILS,
   legalNuances: MOCK_LEGAL_NUANCES,
 };
 
-// executiveSummary streams first so the user sees the narrative recap while
-// later sections are still extracting.
+// executiveSummary streams first so the operator sees the narrative recap
+// while later sections are still extracting. spaceAndPremises follows the
+// identity section since it lives in the same Tab 1.
 export const STREAM_SECTION_ORDER: LeaseAnalysisSection[] = [
   'executiveSummary',
   'executiveIdentity',
+  'spaceAndPremises',
   'financialStack',
   'criticalDeadlines',
   'operationalGuardrails',

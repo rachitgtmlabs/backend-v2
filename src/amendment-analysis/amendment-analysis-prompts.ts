@@ -36,6 +36,19 @@ STRUCTURE: One-paragraph identification, then \`### Headline economics\`, \`### 
 
 Set citation to the amendment page/section that drives the most material change. Ground every claim in the amendment + prior summary; do not invent.`,
 
+  spaceAndPremises: `Section: Space & Premises (DELTA EXTRACTION)
+
+Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+
+Common amendment changes to look for:
+- Resized premises (areaRentable / areaUsable change)
+- Added or removed storage cage
+- Reallocated parking spaces (count or arrangement)
+- Suite renumbering
+- Common-area load adjustment
+
+For any unchanged field, return its value field as "" with empty citation. Do not invent values.`,
+
   executiveIdentity: `Section: Executive Identity (DELTA EXTRACTION)
 
 Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.

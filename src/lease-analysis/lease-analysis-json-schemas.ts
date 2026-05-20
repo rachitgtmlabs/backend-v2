@@ -58,6 +58,64 @@ const executiveSummarySchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Space & Premises — 13 structured fields ported from the legacy v1
+ * `space` extraction. Each leaf uses the standard leaseField shape
+ * (value/citation/pageReference/amendments) so the frontend's existing
+ * citation-to-PDF behavior works without changes.
+ *
+ * The `parking` field is unusual: it has its own value/citation PLUS a
+ * nested `type` sub-field for the parking arrangement (covered, surface,
+ * exclusive, etc.) — mirrors the v1 shape.
+ */
+const parkingField = {
+  type: 'object',
+  properties: {
+    value: { type: 'string' },
+    citation: { type: 'string' },
+    pageReference,
+    amendments: { type: 'array', items: { type: 'string' } },
+    type: leaseField,
+  },
+  required: ['value', 'citation', 'pageReference', 'amendments', 'type'],
+  additionalProperties: false,
+} as const;
+
+const spaceAndPremisesSchema = {
+  type: 'object',
+  properties: {
+    unit: leaseField,
+    building: leaseField,
+    premises: leaseField,
+    zipCode: leaseField,
+    city: leaseField,
+    state: leaseField,
+    areaRentable: leaseField,
+    areaUsable: leaseField,
+    commonArea: leaseField,
+    parking: parkingField,
+    storageArea: leaseField,
+    status: leaseField,
+    notes: leaseField,
+  },
+  required: [
+    'unit',
+    'building',
+    'premises',
+    'zipCode',
+    'city',
+    'state',
+    'areaRentable',
+    'areaUsable',
+    'commonArea',
+    'parking',
+    'storageArea',
+    'status',
+    'notes',
+  ],
+  additionalProperties: false,
+} as const;
+
 /** Root shape matches frontend LeaseInfoResponse / MOCK_EXECUTIVE_IDENTITY. */
 const executiveIdentitySchema = {
   type: 'object',
@@ -344,6 +402,7 @@ export const LEASE_ANALYSIS_JSON_SCHEMA: Record<
   executiveIdentity: {
     ...executiveIdentitySchema,
   },
+  spaceAndPremises: { ...spaceAndPremisesSchema },
   financialStack: { ...financialStackSchema },
   criticalDeadlines: { ...criticalDeadlinesSchema },
   operationalGuardrails: { ...operationalGuardrailsSchema },
@@ -357,6 +416,8 @@ export const LEASE_ANALYSIS_SCHEMA_DESCRIPTION: Record<
 > = {
   executiveSummary:
     'Markdown executive brief (200-350 words): parties, premises, headline economics, term & options, and what to watch. Uses `###` section headers and bulleted lists.',
+  spaceAndPremises:
+    'Structured premises metadata — unit, building, address (city/state/zip), areas (rentable/usable/common-area load), parking allocation + parking type, storage, occupancy status, and free-text notes.',
   executiveIdentity:
     'Parties, premises, lease identifiers, rent basis, deposit, renewal language.',
   financialStack:

@@ -37,6 +37,11 @@ export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
     'Set `citation` to the most relevant single page/section reference for the headline identification (e.g. "p. 1, preamble" or "p. 1, §1.1") — short only. ' +
     'Ground every claim in the OCR; if a fact (e.g. holdover) is not addressed in the lease, omit that bullet rather than invent.',
 
+  spaceAndPremises:
+    'Section: Space & Premises. Extract 13 structured fields describing the leased premises. ' +
+    'Fields: unit (suite/unit number, e.g. "Suite 1200"); building (building name or address line, e.g. "450 Park Avenue" or "Tower A"); premises (one-sentence legal description of what is being leased); zipCode; city; state; areaRentable (e.g. "18,450 sq. ft." — include the unit); areaUsable; commonArea (load factor or common-area allocation, e.g. "7.3% load factor"); parking (value = allocation summary e.g. "4 unreserved spaces, included in rent"; type.value = arrangement e.g. "Covered garage, non-exclusive" or "Surface lot, reserved"); storageArea (e.g. "200 sq. ft. cage in basement"); status (occupancy/delivery status e.g. "Delivered turnkey" or "Shell with Tenant build-out"); notes (free-text caveats not covered above). ' +
+    'For every field, populate citation, pageReference, and amendments (empty if none). Use "" for value when the lease is silent on the field — do NOT invent. Areas should preserve the unit (sq. ft., sf, rsf) exactly as the lease states.',
+
   executiveIdentity:
     'Section: Executive Identity. Extract ONLY the legal entity names for landlord/lessor (leaseFrom) and tenant/lessee (leaseTo) — return the company or person name only (e.g., "PH Office II, LLC" or "Northbrook Outfitters, Inc."), NOT descriptions, definitions, commencement date formulas, or explanatory text about them. Also extract property or suite, lease identifier, rentable area (square feet as number only), rent per square foot (rate only, e.g., "$52.00"), base rent description, security deposit (amount only in "amount" field, any conditions/notes in "conditions" field), and renewal/options language.',
 

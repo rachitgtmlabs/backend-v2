@@ -16,6 +16,7 @@ import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bri
 export interface PreviousAnalysis {
   executiveSummary?: unknown;
   executiveIdentity?: unknown;
+  spaceAndPremises?: unknown;
   financialStack?: unknown;
   criticalDeadlines?: unknown;
   operationalGuardrails?: unknown;
