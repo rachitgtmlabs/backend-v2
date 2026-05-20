@@ -1,7 +1,9 @@
 /** Mock payloads for streaming lease analysis (replace with real extraction later). */
 
 export type LeaseAnalysisSection =
+  | 'executiveSummary'
   | 'executiveIdentity'
+  | 'spaceAndPremises'
   | 'financialStack'
   | 'criticalDeadlines'
   | 'operationalGuardrails'
@@ -14,6 +16,21 @@ function field(
 ): { value: string; citation: string; amendments: string[] } {
   return { value, citation, amendments };
 }
+
+export const MOCK_EXECUTIVE_SUMMARY = {
+  value: `This **10-year office lease** is between Hudson Realty Holdings LLC (Landlord) and Northwind Analytics Inc. (Tenant) for **Suite 1200, 450 Park Avenue**, an 18,450 rentable-sf premises.
+
+### Headline economics
+- Base rent starts at **$52.00 / rsf / year (~$79,950 / month)**.
+- Security deposit: **$239,850 (3 months)**.
+
+### Term & options
+- Two (2) successive **5-year renewal options** at fair market value.
+
+### What to watch
+- Confirm renewal-notice mechanics and FMV reset methodology before exercising.`,
+  citation: 'p. 1, preamble',
+};
 
 export const MOCK_EXECUTIVE_IDENTITY = {
   leaseInformation: {
@@ -32,6 +49,46 @@ export const MOCK_EXECUTIVE_IDENTITY = {
       'p. 12, §8.2',
     ),
   },
+};
+
+function pageRef(page: number, section: string, highlightText = '') {
+  return { page, section, highlightText };
+}
+
+function spaceField(value: string, citation: string, page = 0, section = '') {
+  return {
+    value,
+    citation,
+    pageReference: pageRef(page, section),
+    amendments: [] as string[],
+  };
+}
+
+export const MOCK_SPACE_AND_PREMISES = {
+  unit: spaceField('Suite 1200', 'p. 2, §1.1', 2, '§1.1'),
+  building: spaceField('450 Park Avenue', 'p. 2, §1.1', 2, '§1.1'),
+  premises: spaceField(
+    'Suite 1200, comprising 18,450 rentable sq. ft. on the 12th floor of 450 Park Avenue.',
+    'p. 2, Exhibit A',
+    2,
+    'Exhibit A',
+  ),
+  zipCode: spaceField('10022', 'p. 2, §1.1', 2, '§1.1'),
+  city: spaceField('New York', 'p. 2, §1.1', 2, '§1.1'),
+  state: spaceField('New York', 'p. 2, §1.1', 2, '§1.1'),
+  areaRentable: spaceField('18,450 sq. ft.', 'p. 3, §2.2', 3, '§2.2'),
+  areaUsable: spaceField('17,200 sq. ft.', 'p. 3, §2.2', 3, '§2.2'),
+  commonArea: spaceField('7.3% load factor', 'p. 3, §2.2', 3, '§2.2'),
+  parking: {
+    value: '4 unreserved spaces, included in rent',
+    citation: 'p. 14, §11.2',
+    pageReference: pageRef(14, '§11.2'),
+    amendments: [] as string[],
+    type: spaceField('Covered garage, non-exclusive', 'p. 14, §11.2', 14, '§11.2'),
+  },
+  storageArea: spaceField('', '', 0, ''),
+  status: spaceField('Delivered turnkey', 'p. 4, §3.1', 4, '§3.1'),
+  notes: spaceField('', '', 0, ''),
 };
 
 export const MOCK_FINANCIAL_STACK = {
@@ -74,6 +131,40 @@ export const MOCK_FINANCIAL_STACK = {
     { label: 'Taxes (2026 est.)', amount: '$14.10 / rsf' },
     { label: 'Insurance', amount: 'Pro-rata share' },
   ],
+  lateFees: {
+    calculationType: spaceField(
+      'Percentage of monthly base rent',
+      'p. 8, §5.4',
+      8,
+      '§5.4',
+    ),
+    graceDays: spaceField('5 days after due date', 'p. 8, §5.4', 8, '§5.4'),
+    percent: spaceField('5% of unpaid amount', 'p. 8, §5.4', 8, '§5.4'),
+    secondFeeCalculationType: spaceField(
+      'Compound monthly interest on outstanding balance',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    secondFeeGrace: spaceField(
+      '30 days after primary penalty assessed',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    secondFeePercent: spaceField(
+      '1.5% per month, compounded',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    perDayFee: spaceField(
+      '$50 per day after 30 days delinquent',
+      'p. 9, §5.4(c)',
+      9,
+      '§5.4(c)',
+    ),
+  },
 };
 
 export const MOCK_CRITICAL_DEADLINES = {
@@ -343,15 +434,22 @@ export const MOCK_LEGAL_NUANCES = {
 };
 
 const MOCKS: Record<LeaseAnalysisSection, unknown> = {
+  executiveSummary: MOCK_EXECUTIVE_SUMMARY,
   executiveIdentity: MOCK_EXECUTIVE_IDENTITY,
+  spaceAndPremises: MOCK_SPACE_AND_PREMISES,
   financialStack: MOCK_FINANCIAL_STACK,
   criticalDeadlines: MOCK_CRITICAL_DEADLINES,
   operationalGuardrails: MOCK_OPERATIONAL_GUARDRAILS,
   legalNuances: MOCK_LEGAL_NUANCES,
 };
 
+// executiveSummary streams first so the operator sees the narrative recap
+// while later sections are still extracting. spaceAndPremises follows the
+// identity section since it lives in the same Tab 1.
 export const STREAM_SECTION_ORDER: LeaseAnalysisSection[] = [
+  'executiveSummary',
   'executiveIdentity',
+  'spaceAndPremises',
   'financialStack',
   'criticalDeadlines',
   'operationalGuardrails',

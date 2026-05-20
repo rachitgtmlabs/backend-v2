@@ -10,11 +10,14 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { STREAM_SECTION_ORDER } from '../lease-analysis/lease-analysis.mocks';
+import { OPERATIONAL_GUARDRAILS_TOPIC_KEYS } from '../lease-analysis/lease-analysis-json-schemas';
 import { GroqAmendmentAnalysisService } from './groq-amendment-analysis.service';
 import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bridge.service';
 
 export interface PreviousAnalysis {
+  executiveSummary?: unknown;
   executiveIdentity?: unknown;
+  spaceAndPremises?: unknown;
   financialStack?: unknown;
   criticalDeadlines?: unknown;
   operationalGuardrails?: unknown;
@@ -79,9 +82,13 @@ export class AmendmentAnalysisService {
     for (const section of STREAM_SECTION_ORDER) {
       try {
         const previousSectionJson = previousAnalysis[section] ?? {};
-        const data = await this.groq.extractSectionDelta(section, ocrText, {
+        const raw = await this.groq.extractSectionDelta(section, ocrText, {
           previousSectionJson,
         });
+        const data =
+          section === 'operationalGuardrails'
+            ? this.pruneEmptyProvisionTopics(raw)
+            : raw;
         res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
         (res as any).flush?.();
       } catch (err) {
@@ -166,5 +173,44 @@ export class AmendmentAnalysisService {
       return fs.readFile(file.path);
     }
     throw new BadRequestException('Unable to read uploaded file');
+  }
+
+  /**
+   * Same prune logic as LeaseAnalysisService — strip operationalGuardrails
+   * topics where every value field is empty. In amendment delta mode this
+   * matters even more: an empty topic means "no change in this clause", and
+   * shipping it as `{ synopsis: { value: "" }, ... }` would clobber the
+   * Tenant's existing values on the frontend's delta merge.
+   */
+  private pruneEmptyProvisionTopics(raw: unknown): unknown {
+    if (!raw || typeof raw !== 'object') return raw;
+    const source = raw as Record<string, unknown>;
+    const pruned: Record<string, unknown> = {};
+    for (const key of OPERATIONAL_GUARDRAILS_TOPIC_KEYS) {
+      const topic = source[key];
+      if (this.provisionTopicIsEmpty(topic)) continue;
+      pruned[key] = topic;
+    }
+    for (const [key, value] of Object.entries(source)) {
+      if ((OPERATIONAL_GUARDRAILS_TOPIC_KEYS as readonly string[]).includes(key))
+        continue;
+      pruned[key] = value;
+    }
+    return pruned;
+  }
+
+  private provisionTopicIsEmpty(topic: unknown): boolean {
+    if (!topic || typeof topic !== 'object') return true;
+    const t = topic as Record<string, unknown>;
+    const read = (field: unknown): string => {
+      if (!field || typeof field !== 'object') return '';
+      const v = (field as Record<string, unknown>).value;
+      return typeof v === 'string' ? v.trim() : '';
+    };
+    return (
+      read(t.synopsis) === '' &&
+      read(t.keyParameters) === '' &&
+      read(t.narrative) === ''
+    );
   }
 }
