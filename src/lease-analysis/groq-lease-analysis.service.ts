@@ -9,10 +9,14 @@ import type { LeaseAnalysisSection } from './lease-analysis.mocks';
 import {
   LEASE_ANALYSIS_JSON_SCHEMA,
   LEASE_ANALYSIS_SCHEMA_DESCRIPTION,
+  operationalGuardrailsASchema,
+  operationalGuardrailsBSchema,
 } from './lease-analysis-json-schemas';
 import {
   LEASE_ANALYSIS_SYSTEM_PROMPT,
   SECTION_USER_TAIL,
+  OPERATIONAL_GUARDRAILS_A_TAIL,
+  OPERATIONAL_GUARDRAILS_B_TAIL,
 } from './lease-analysis-section-prompts';
 import { parseJsonFromLlm } from './json-parse.util';
 import {
@@ -193,6 +197,76 @@ export class GroqLeaseAnalysisService {
     return parsed;
   }
 
+  /**
+   * Splits the 28-topic operationalGuardrails schema into two parallel calls
+   * (14 topics each) to prevent nesting-drift / json_validate_failed errors
+   * that occur when the model generates the full 28-topic object in one shot.
+   * The two results are merged into a single object before returning.
+   */
+  async extractOperationalGuardrailsJson(ocrPlainText: string): Promise<unknown> {
+    if (!this.client) {
+      throw new ServiceUnavailableException(
+        'GROQ_API_KEY is not configured; cannot run lease analysis.',
+      );
+    }
+
+    const model =
+      this.config.get<string>('GROQ_MODEL')?.trim() ?? 'openai/gpt-oss-120b';
+    const strict = this.jsonSchemaStrictEnabled();
+
+    const makeCall = (tail: string, schema: Record<string, unknown>, batch: 'A' | 'B') => {
+      const userContent = `${ocrPlainText}\n\n---\n\n${tail}`;
+      const messages = [
+        { role: 'system' as const, content: LEASE_ANALYSIS_SYSTEM_PROMPT },
+        { role: 'user' as const, content: userContent },
+      ];
+      return this.runGroqWithBackoff(
+        `chat.completions.create section=operationalGuardrails batch=${batch}`,
+        () =>
+          this.client!.chat.completions.create({
+            model,
+            messages,
+            temperature: 0.1,
+            max_completion_tokens: 10000,
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: `lease_analysis_operationalGuardrails_${batch}`,
+                description: `Operational Guardrails structured provisions — batch ${batch} of 2 (14 topics).`,
+                strict,
+                schema,
+              },
+            },
+          }),
+      );
+    };
+
+    const [completionA, completionB] = await Promise.all([
+      makeCall(OPERATIONAL_GUARDRAILS_A_TAIL, operationalGuardrailsASchema as unknown as Record<string, unknown>, 'A'),
+      makeCall(OPERATIONAL_GUARDRAILS_B_TAIL, operationalGuardrailsBSchema as unknown as Record<string, unknown>, 'B'),
+    ]);
+
+    const parseRaw = (completion: Awaited<ReturnType<typeof makeCall>>, batch: 'A' | 'B'): unknown => {
+      const raw = completion.choices[0]?.message?.content;
+      if (!raw?.trim()) {
+        throw new Error(`Groq returned empty content for operationalGuardrails batch ${batch}`);
+      }
+      try {
+        return parseJsonFromLlm(raw);
+      } catch (err) {
+        this.logger.error(
+          `JSON parse failed for operationalGuardrails batch ${batch}: ${raw.slice(0, 800)}`,
+        );
+        throw err;
+      }
+    };
+
+    const batchA = parseRaw(completionA, 'A') as Record<string, unknown>;
+    const batchB = parseRaw(completionB, 'B') as Record<string, unknown>;
+
+    return { ...batchA, ...batchB };
+  }
+
   buildCamReviewUserContent(ocrPlainText: string): string {
     return `${ocrPlainText}\n\n---\n\n${CAM_REVIEW_USER_TAIL}`;
   }
@@ -208,7 +282,6 @@ export class GroqLeaseAnalysisService {
       this.config.get<string>('GROQ_MODEL')?.trim() ?? 'openai/gpt-oss-120b';
     const strict = this.jsonSchemaStrictEnabled();
     const userContent = this.buildCamReviewUserContent(ocrPlainText);
-    const section = 'camReview' as const;
 
     const messages = [
       { role: 'system' as const, content: LEASE_ANALYSIS_SYSTEM_PROMPT },

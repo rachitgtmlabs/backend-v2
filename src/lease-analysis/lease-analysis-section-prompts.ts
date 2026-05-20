@@ -103,3 +103,55 @@ export const SECTION_USER_TAIL: Record<LeaseAnalysisSection, string> = {
     'Populate counts as the integer total of issues at each certaintyLevel across all sections (e.g. count.high = number of high-certainty issues). overallCertainty = the model\'s overall confidence in the register. ' +
     'If a section has no issues, still include it with an empty issues array. NEVER invent issues without OCR grounding.',
 };
+
+const PROVISION_FIELD_INSTRUCTIONS =
+  'For EACH topic populate three fields exactly: ' +
+  '(1) synopsis.value — one plain-English sentence (<=140 chars) capturing the rule; ' +
+  '(2) keyParameters.value — a short newline-separated list of concrete, quantitative or rule-level parameters (thresholds, dollar caps, business-hour ranges, approval timelines, day counts, percentages, named systems). Format as "Label: value" pairs, one per line. Use "" if no quantitative parameters exist; ' +
+  '(3) narrative.value — a 2-4 sentence operator-facing explanation: WHO must do WHAT, with WHICH consents/exceptions, and the practical operational consequence. Avoid restating the synopsis verbatim. ';
+
+const PROVISION_CLOSING_INSTRUCTIONS =
+  'For every field populate citation, pageReference, and amendments (empty if none). Set topic-level certainty: "high" only when the OCR directly states the rule, "medium" when inferred from related clauses, "low" when the OCR is silent or ambiguous. ' +
+  'CRITICAL: When the lease is SILENT on a topic, still include it with ALL field values set to empty strings "" and certainty to "low". NEVER invent parameters.';
+
+/** User tail for Batch A (first 14 topics: use → parking). */
+export const OPERATIONAL_GUARDRAILS_A_TAIL =
+  'Section: Operational Guardrails (Part A — 14 topics). Produce structured per-topic provisions for the 14 topics listed below. ' +
+  PROVISION_FIELD_INSTRUCTIONS +
+  'Topic scope (these 14 only): ' +
+  'use = permitted vs. prohibited uses, exclusivity, radius restrictions; ' +
+  'alterations = tenant alterations / improvements, consent thresholds, removal & restoration; ' +
+  'services = building services (HVAC, janitorial, security, elevators), hours of operation, after-hours fees, utility metering; ' +
+  'signs = signage rights, building-standard requirements, exterior alterations; ' +
+  'premisesAndTerm = lease term length, commencement, delivery condition, expiration; ' +
+  'holdover = holdover rent multiplier, conversion to month-to-month, Landlord remedies; ' +
+  'expansionAndRelocation = expansion options, ROFO on adjacent space, Landlord relocation rights; ' +
+  'rightOfFirstRefusalOffer = ROFR/ROFO on building sale or transfer; ' +
+  'taxes = property tax pass-through, pro-rata share, base year, reassessment; ' +
+  'operatingExpenses = CAM definition, reconciliation, caps, audit rights, gross-up, management fee; ' +
+  'insurance = required policy limits, additional insureds, waiver of subrogation; ' +
+  'brokerage = named brokers, commission obligations, mutual indemnity; ' +
+  'repairsAndMaintenance = Landlord-vs-Tenant repair split, response times; ' +
+  'parking = allocation, reserved/unreserved, pricing, visitor parking. ' +
+  PROVISION_CLOSING_INSTRUCTIONS;
+
+/** User tail for Batch B (last 14 topics: hazardousMaterials → subordination). */
+export const OPERATIONAL_GUARDRAILS_B_TAIL =
+  'Section: Operational Guardrails (Part B — 14 topics). Produce structured per-topic provisions for the 14 topics listed below. ' +
+  PROVISION_FIELD_INSTRUCTIONS +
+  'Topic scope (these 14 only): ' +
+  'hazardousMaterials = prohibited substances, disclosure, indemnity, pre-existing conditions; ' +
+  'rulesAndRegulations = building rules, Landlord right to amend, enforcement; ' +
+  'landlordsRightOfEntry = access purposes, advance notice, emergencies, showings; ' +
+  'quietEnjoyment = quiet-enjoyment covenant, constructive eviction; ' +
+  'assignmentAndSubletting = consent standard, permitted transfers, profit share, recapture; ' +
+  'defaultAndRemedies = cure periods, acceleration, eviction, re-letting, mitigation, jury-trial waiver; ' +
+  'landlordDefault = Landlord cure period, Tenant self-help, offset, damage caps; ' +
+  'casualty = repair election, abatement, termination thresholds; ' +
+  'condemnation = total vs partial taking, award allocation, termination rights; ' +
+  'liabilityAndIndemnification = scope of mutual indemnities, gross-negligence carve-outs; ' +
+  'liens = mechanics-lien prohibition, bonding, statutory waivers; ' +
+  'notices = permitted delivery methods, notice addresses, effective dates; ' +
+  'estoppel = response window, deemed approval, SNDA cooperation; ' +
+  'subordination = subordination to existing/future mortgages, non-disturbance, attornment. ' +
+  PROVISION_CLOSING_INSTRUCTIONS;

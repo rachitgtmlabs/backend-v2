@@ -419,6 +419,86 @@ const operationalGuardrailsSchema = {
 } as const;
 
 /**
+ * Batch A — first 14 operational-guardrails topics.
+ * Splitting the 28-topic schema into two parallel calls avoids the nesting
+ * drift that causes json_validate_failed on longer generations.
+ */
+export const operationalGuardrailsASchema = {
+  type: 'object',
+  properties: {
+    use: provisionTopic,
+    alterations: provisionTopic,
+    services: provisionTopic,
+    signs: provisionTopic,
+    premisesAndTerm: provisionTopic,
+    holdover: provisionTopic,
+    expansionAndRelocation: provisionTopic,
+    rightOfFirstRefusalOffer: provisionTopic,
+    taxes: provisionTopic,
+    operatingExpenses: provisionTopic,
+    insurance: provisionTopic,
+    brokerage: provisionTopic,
+    repairsAndMaintenance: provisionTopic,
+    parking: provisionTopic,
+  },
+  required: [
+    'use',
+    'alterations',
+    'services',
+    'signs',
+    'premisesAndTerm',
+    'holdover',
+    'expansionAndRelocation',
+    'rightOfFirstRefusalOffer',
+    'taxes',
+    'operatingExpenses',
+    'insurance',
+    'brokerage',
+    'repairsAndMaintenance',
+    'parking',
+  ],
+  additionalProperties: false,
+} as const;
+
+/** Batch B — last 14 operational-guardrails topics. */
+export const operationalGuardrailsBSchema = {
+  type: 'object',
+  properties: {
+    hazardousMaterials: provisionTopic,
+    rulesAndRegulations: provisionTopic,
+    landlordsRightOfEntry: provisionTopic,
+    quietEnjoyment: provisionTopic,
+    assignmentAndSubletting: provisionTopic,
+    defaultAndRemedies: provisionTopic,
+    landlordDefault: provisionTopic,
+    casualty: provisionTopic,
+    condemnation: provisionTopic,
+    liabilityAndIndemnification: provisionTopic,
+    liens: provisionTopic,
+    notices: provisionTopic,
+    estoppel: provisionTopic,
+    subordination: provisionTopic,
+  },
+  required: [
+    'hazardousMaterials',
+    'rulesAndRegulations',
+    'landlordsRightOfEntry',
+    'quietEnjoyment',
+    'assignmentAndSubletting',
+    'defaultAndRemedies',
+    'landlordDefault',
+    'casualty',
+    'condemnation',
+    'liabilityAndIndemnification',
+    'liens',
+    'notices',
+    'estoppel',
+    'subordination',
+  ],
+  additionalProperties: false,
+} as const;
+
+/**
  * Full list of operational-guardrails topic keys. Exposed so the
  * service post-processing step can iterate them when pruning empty
  * topics from the LLM response.

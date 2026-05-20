@@ -110,7 +110,10 @@ export class LeaseAnalysisService {
 
     for (const section of STREAM_SECTION_ORDER) {
       try {
-        const raw = await this.groq.extractSectionJson(section, ocrText);
+        const raw =
+          section === 'operationalGuardrails'
+            ? await this.groq.extractOperationalGuardrailsJson(ocrText)
+            : await this.groq.extractSectionJson(section, ocrText);
         const data =
           section === 'operationalGuardrails'
             ? this.pruneEmptyProvisionTopics(raw)
