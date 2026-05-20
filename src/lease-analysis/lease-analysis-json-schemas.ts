@@ -151,6 +151,36 @@ const executiveIdentitySchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Late-fee penalty structure ported from v1 chargeSchedules.lateFee.
+ * Seven leaseField-shaped properties: primary fee (grace/percent/calc),
+ * secondary fee (grace/percent/calc) which kicks in if the primary
+ * cure window expires, and a per-day fee. Frontend renders these
+ * tiered in the Financial Stack tab.
+ */
+const lateFeesSchema = {
+  type: 'object',
+  properties: {
+    calculationType: leaseField,
+    graceDays: leaseField,
+    percent: leaseField,
+    secondFeeCalculationType: leaseField,
+    secondFeeGrace: leaseField,
+    secondFeePercent: leaseField,
+    perDayFee: leaseField,
+  },
+  required: [
+    'calculationType',
+    'graceDays',
+    'percent',
+    'secondFeeCalculationType',
+    'secondFeeGrace',
+    'secondFeePercent',
+    'perDayFee',
+  ],
+  additionalProperties: false,
+} as const;
+
 const financialStackSchema = {
   type: 'object',
   properties: {
@@ -198,8 +228,9 @@ const financialStackSchema = {
         additionalProperties: false,
       },
     },
+    lateFees: lateFeesSchema,
   },
-  required: ['summaryCards', 'rentSchedule', 'additionalCharges'],
+  required: ['summaryCards', 'rentSchedule', 'additionalCharges', 'lateFees'],
   additionalProperties: false,
 } as const;
 

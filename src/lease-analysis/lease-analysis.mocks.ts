@@ -131,6 +131,40 @@ export const MOCK_FINANCIAL_STACK = {
     { label: 'Taxes (2026 est.)', amount: '$14.10 / rsf' },
     { label: 'Insurance', amount: 'Pro-rata share' },
   ],
+  lateFees: {
+    calculationType: spaceField(
+      'Percentage of monthly base rent',
+      'p. 8, §5.4',
+      8,
+      '§5.4',
+    ),
+    graceDays: spaceField('5 days after due date', 'p. 8, §5.4', 8, '§5.4'),
+    percent: spaceField('5% of unpaid amount', 'p. 8, §5.4', 8, '§5.4'),
+    secondFeeCalculationType: spaceField(
+      'Compound monthly interest on outstanding balance',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    secondFeeGrace: spaceField(
+      '30 days after primary penalty assessed',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    secondFeePercent: spaceField(
+      '1.5% per month, compounded',
+      'p. 8, §5.4(b)',
+      8,
+      '§5.4(b)',
+    ),
+    perDayFee: spaceField(
+      '$50 per day after 30 days delinquent',
+      'p. 9, §5.4(c)',
+      9,
+      '§5.4(c)',
+    ),
+  },
 };
 
 export const MOCK_CRITICAL_DEADLINES = {
