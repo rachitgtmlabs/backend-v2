@@ -9,6 +9,8 @@ import type { LeaseAnalysisSection } from '../lease-analysis/lease-analysis.mock
 import {
   LEASE_ANALYSIS_JSON_SCHEMA,
   LEASE_ANALYSIS_SCHEMA_DESCRIPTION,
+  operationalGuardrailsASchema,
+  operationalGuardrailsBSchema,
 } from '../lease-analysis/lease-analysis-json-schemas';
 import {
   CAM_REVIEW_JSON_SCHEMA,
@@ -19,6 +21,7 @@ import {
   AMENDMENT_ANALYSIS_SYSTEM_PROMPT,
   buildAmendmentUserContent,
   buildAmendmentCamReviewUserContent,
+  buildAmendmentOperationalGuardrailsUserContent,
 } from './amendment-analysis-prompts';
 import { parseJsonFromLlm } from '../lease-analysis/json-parse.util';
 
@@ -230,5 +233,86 @@ export class GroqAmendmentAnalysisService {
     }
 
     return parsed;
+  }
+
+  /**
+   * Splits the 28-topic operationalGuardrails delta schema into two parallel calls
+   * (14 topics each) to prevent nesting-drift / json_validate_failed errors.
+   */
+  async extractOperationalGuardrailsDelta(
+    ocrPlainText: string,
+    previousSectionJson: unknown,
+  ): Promise<unknown> {
+    if (!this.client) {
+      throw new ServiceUnavailableException(
+        'GROQ_API_KEY is not configured; cannot run amendment analysis.',
+      );
+    }
+
+    const model =
+      this.config.get<string>('GROQ_MODEL')?.trim() ?? 'openai/gpt-oss-120b';
+    const strict = this.jsonSchemaStrictEnabled();
+
+    const makeCall = (
+      batch: 'A' | 'B',
+      schema: Record<string, unknown>,
+    ) => {
+      const userContent = buildAmendmentOperationalGuardrailsUserContent(
+        ocrPlainText,
+        batch,
+        previousSectionJson,
+      );
+      const messages = [
+        { role: 'system' as const, content: AMENDMENT_ANALYSIS_SYSTEM_PROMPT },
+        { role: 'user' as const, content: userContent },
+      ];
+      return this.runGroqWithBackoff(
+        `chat.completions.create amendment-operationalGuardrails batch=${batch}`,
+        () =>
+          this.client!.chat.completions.create({
+            model,
+            messages,
+            temperature: 0.1,
+            max_completion_tokens: 10000,
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: `amendment_analysis_operationalGuardrails_${batch}`,
+                description: `Delta extraction for operational guardrails — batch ${batch} of 2 (14 topics).`,
+                strict,
+                schema,
+              },
+            },
+          }),
+      );
+    };
+
+    const [completionA, completionB] = await Promise.all([
+      makeCall('A', operationalGuardrailsASchema as unknown as Record<string, unknown>),
+      makeCall('B', operationalGuardrailsBSchema as unknown as Record<string, unknown>),
+    ]);
+
+    const parseRaw = (
+      completion: Awaited<ReturnType<typeof makeCall>>,
+      batch: 'A' | 'B',
+    ): unknown => {
+      const raw = completion.choices[0]?.message?.content;
+      if (!raw?.trim()) {
+        throw new Error(`Groq returned empty content for amendment operationalGuardrails batch ${batch}`);
+      }
+      try {
+        return parseJsonFromLlm(raw);
+      } catch (err) {
+        this.logger.error(
+          `JSON parse failed for amendment operationalGuardrails batch ${batch}: ${raw.slice(0, 800)}`,
+        );
+        throw err;
+      }
+    };
+
+    const batchA = parseRaw(completionA, 'A') as Record<string, unknown>;
+    const batchB = parseRaw(completionB, 'B') as Record<string, unknown>;
+
+    return { ...batchA, ...batchB };
   }
 }

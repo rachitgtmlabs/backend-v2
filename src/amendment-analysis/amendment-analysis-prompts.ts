@@ -124,6 +124,57 @@ If the amendment introduces no new legal-nuance issues, return riskRegister with
 };
 
 /**
+ * Prompt tails for operational guardrails delta extraction, split into Batch A and Batch B
+ */
+export const AMENDMENT_OPERATIONAL_GUARDRAILS_A_TAIL = `Section: Operational Guardrails (Part A — 14 topics: DELTA EXTRACTION)
+
+Compare the amendment against the PREVIOUS VALUES below. For each topic:
+- If the amendment MODIFIES the rule, fill that topic's synopsis/keyParameters/narrative with the NEW post-amendment statement and add a concise entry to the relevant field's amendments[] array describing the change (e.g. "Amendment 2: HVAC after-hours fee raised to $75/hr").
+- If the amendment is silent on a topic, return that topic with all field values as "" and certainty "low" (placeholder — the merger will keep the prior value).
+
+Topic scope (these 14 only):
+- use = permitted vs. prohibited uses, exclusivity, radius restrictions;
+- alterations = tenant alterations / improvements, consent thresholds, removal & restoration;
+- services = building services (HVAC, janitorial, security, elevators), hours of operation, after-hours fees, utility metering;
+- signs = signage rights, building-standard requirements, exterior alterations;
+- premisesAndTerm = lease term length, commencement, delivery condition, expiration;
+- holdover = holdover rent multiplier, conversion to month-to-month, Landlord remedies;
+- expansionAndRelocation = expansion options, ROFO on adjacent space, Landlord relocation rights;
+- rightOfFirstRefusalOffer = ROFR/ROFO on building sale or transfer;
+- taxes = property tax pass-through, pro-rata share, base year, reassessment;
+- operatingExpenses = CAM definition, reconciliation, caps, audit rights, gross-up, management fee;
+- insurance = required policy limits, additional insureds, waiver of subrogation;
+- brokerage = named brokers, commission obligations, mutual indemnity;
+- repairsAndMaintenance = Landlord-vs-Tenant repair split, response times;
+- parking = allocation, reserved/unreserved, pricing, visitor parking.
+
+If no changes are found at all, return all 14 topics with empty field values and certainty "low".`;
+
+export const AMENDMENT_OPERATIONAL_GUARDRAILS_B_TAIL = `Section: Operational Guardrails (Part B — 14 topics: DELTA EXTRACTION)
+
+Compare the amendment against the PREVIOUS VALUES below. For each topic:
+- If the amendment MODIFIES the rule, fill that topic's synopsis/keyParameters/narrative with the NEW post-amendment statement and add a concise entry to the relevant field's amendments[] array describing the change (e.g. "Amendment 2: Restoration obligation waived").
+- If the amendment is silent on a topic, return that topic with all field values as "" and certainty "low" (placeholder — the merger will keep the prior value).
+
+Topic scope (these 14 only):
+- hazardousMaterials = prohibited substances, disclosure, indemnity, pre-existing conditions;
+- rulesAndRegulations = building rules, Landlord right to amend, enforcement;
+- landlordsRightOfEntry = access purposes, advance notice, emergencies, showings;
+- quietEnjoyment = quiet-enjoyment covenant, constructive eviction;
+- assignmentAndSubletting = consent standard, permitted transfers, profit share, recapture;
+- defaultAndRemedies = cure periods, acceleration, eviction, re-letting, mitigation, jury-trial waiver;
+- landlordDefault = Landlord cure period, Tenant self-help, offset, damage caps;
+- casualty = repair election, abatement, termination thresholds;
+- condemnation = total vs partial taking, award allocation, termination rights;
+- liabilityAndIndemnification = scope of mutual indemnities, gross-negligence carve-outs;
+- liens = mechanics-lien prohibition, bonding, statutory waivers;
+- notices = permitted delivery methods, notice addresses, effective dates;
+- estoppel = response window, deemed approval, SNDA cooperation;
+- subordination = subordination to existing/future mortgages, non-disturbance, attornment.
+
+If no changes are found at all, return all 14 topics with empty field values and certainty "low".`;
+
+/**
  * CAM Review delta extraction prompt
  */
 export const AMENDMENT_CAM_REVIEW_USER_TAIL = `Section: CAM Review (DELTA EXTRACTION)
@@ -173,6 +224,81 @@ export function buildAmendmentUserContent(
 ---
 
 PREVIOUS VERSION VALUES:
+\`\`\`json
+${previousJsonStr}
+\`\`\`
+
+---
+
+${tail}`;
+}
+
+/**
+ * Build amendment user message for a specific batch of operational guardrails
+ */
+export function buildAmendmentOperationalGuardrailsUserContent(
+  ocrPlainText: string,
+  batch: 'A' | 'B',
+  previousSectionJson: unknown,
+): string {
+  const tail =
+    batch === 'A'
+      ? AMENDMENT_OPERATIONAL_GUARDRAILS_A_TAIL
+      : AMENDMENT_OPERATIONAL_GUARDRAILS_B_TAIL;
+
+  // Filter previousSectionJson to only keys relevant to this batch
+  const keys =
+    batch === 'A'
+      ? [
+          'use',
+          'alterations',
+          'services',
+          'signs',
+          'premisesAndTerm',
+          'holdover',
+          'expansionAndRelocation',
+          'rightOfFirstRefusalOffer',
+          'taxes',
+          'operatingExpenses',
+          'insurance',
+          'brokerage',
+          'repairsAndMaintenance',
+          'parking',
+        ]
+      : [
+          'hazardousMaterials',
+          'rulesAndRegulations',
+          'landlordsRightOfEntry',
+          'quietEnjoyment',
+          'assignmentAndSubletting',
+          'defaultAndRemedies',
+          'landlordDefault',
+          'casualty',
+          'condemnation',
+          'liabilityAndIndemnification',
+          'liens',
+          'notices',
+          'estoppel',
+          'subordination',
+        ];
+
+  const filteredJson: Record<string, unknown> = {};
+  if (previousSectionJson && typeof previousSectionJson === 'object') {
+    const src = previousSectionJson as Record<string, unknown>;
+    for (const key of keys) {
+      if (key in src) {
+        filteredJson[key] = src[key];
+      }
+    }
+  }
+
+  const previousJsonStr = JSON.stringify(filteredJson, null, 2);
+
+  return `${ocrPlainText}
+
+---
+
+PREVIOUS VERSION VALUES (BATCH ${batch}):
 \`\`\`json
 ${previousJsonStr}
 \`\`\`

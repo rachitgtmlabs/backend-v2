@@ -82,9 +82,12 @@ export class AmendmentAnalysisService {
     for (const section of STREAM_SECTION_ORDER) {
       try {
         const previousSectionJson = previousAnalysis[section] ?? {};
-        const raw = await this.groq.extractSectionDelta(section, ocrText, {
-          previousSectionJson,
-        });
+        const raw =
+          section === 'operationalGuardrails'
+            ? await this.groq.extractOperationalGuardrailsDelta(ocrText, previousSectionJson)
+            : await this.groq.extractSectionDelta(section, ocrText, {
+                previousSectionJson,
+              });
         const data =
           section === 'operationalGuardrails'
             ? this.pruneEmptyProvisionTopics(raw)
