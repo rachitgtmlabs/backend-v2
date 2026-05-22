@@ -131,6 +131,15 @@ export class LeaseController {
     return this.leaseService.listAmendments(leaseId.trim());
   }
 
+  /**
+   * Field-level history for the Timeline view.
+   * GET /v1/leases/:leaseId/field-history
+   */
+  @Get(':leaseId/field-history')
+  getFieldHistory(@Param('leaseId') leaseId: string) {
+    return this.leaseService.getFieldHistory(leaseId.trim());
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() body: CreateLeaseDto) {

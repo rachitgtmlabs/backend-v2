@@ -15,6 +15,10 @@ import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
 import { deepMerge } from './utils/deep-merge.util';
+import {
+  buildFieldHistory,
+  type FieldHistoryPayload,
+} from './utils/field-history.util';
 
 function newLeaseId(): string {
   return `les_${randomBytes(6).toString('hex')}`;
@@ -500,6 +504,41 @@ export class LeaseService {
       throw new NotFoundException('Document not found or storage not configured');
     }
     return result;
+  }
+
+  /**
+   * Field-level history for the Timeline view — per tracked scalar field,
+   * lists every version (original + amendments) where the value changed.
+   * Arrays (rent schedule, milestones) are intentionally not tracked here.
+   */
+  async getFieldHistory(leaseId: string): Promise<FieldHistoryPayload> {
+    const lease = await this.leaseModel.findOne({ leaseId }).exec();
+    if (!lease) {
+      throw new NotFoundException(`Lease not found: ${leaseId}`);
+    }
+
+    const amendments = await this.amendmentModel
+      .find({ lease_id: leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    const originalEffectiveDate =
+      lease.createdAt?.toISOString() ?? new Date().toISOString();
+
+    return buildFieldHistory({
+      leaseId: lease.leaseId,
+      originalAnalysis: (lease.analysis ?? {}) as Record<string, unknown>,
+      originalEffectiveDate,
+      amendments: amendments.map((a) => ({
+        amendmentId: a.amendmentId,
+        version: a.version,
+        analysisDelta: (a.analysis ?? undefined) as
+          | Record<string, unknown>
+          | undefined,
+        effectiveDate:
+          a.createdAt?.toISOString() ?? new Date().toISOString(),
+      })),
+    });
   }
 
   /**

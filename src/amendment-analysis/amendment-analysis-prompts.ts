@@ -94,19 +94,26 @@ If no changes are found, return an object with empty milestones and risks arrays
 
   operationalGuardrails: `Section: Operational Guardrails (DELTA EXTRACTION)
 
-The schema is four structured provision topics: use, alterations, services, signs. Each topic has synopsis, keyParameters, narrative (with citation + pageReference + amendments) and a certainty level.
+The schema requires all 28 provision topics to be present in the response. Each topic has synopsis, keyParameters, narrative (each with value + citation + pageReference + amendments) and a topic-level certainty.
+
+Topic scope (all 28 — every one MUST appear in your response):
+use, alterations, services, signs, premisesAndTerm, holdover, expansionAndRelocation, rightOfFirstRefusalOffer, taxes, operatingExpenses, insurance, brokerage, repairsAndMaintenance, parking, hazardousMaterials, rulesAndRegulations, landlordsRightOfEntry, quietEnjoyment, assignmentAndSubletting, defaultAndRemedies, landlordDefault, casualty, condemnation, liabilityAndIndemnification, liens, notices, estoppel, subordination.
 
 Compare the amendment against the PREVIOUS VALUES below. For each topic:
-- If the amendment MODIFIES the rule, fill that topic's synopsis/keyParameters/narrative with the NEW post-amendment statement and add a concise entry to the relevant field's amendments[] array describing the change (e.g. "Amendment 2: HVAC after-hours fee raised to $75/hr").
-- If the amendment is silent on a topic, return that topic with all field values as "" and certainty "low" (placeholder — the merger will keep the prior value).
+- If the amendment MODIFIES the rule, fill that topic's synopsis/keyParameters/narrative value fields with the NEW post-amendment statement, set certainty to "high" or "medium" as appropriate, and add a concise entry to the relevant field's amendments[] array describing the change (e.g. "Amendment 2: HVAC after-hours fee raised to $75/hr").
+- If the amendment is SILENT on a topic, you MUST still include the topic with ALL value fields set to "" (empty string) and certainty "low". This is a placeholder — the server will prune it and the merger will keep the prior value. Do NOT omit any topic.
 
 Common amendment changes to look for:
 - Expanded or restricted permitted uses, new exclusivity/radius language (use)
 - Modified alteration consent thresholds or restoration obligations (alterations)
 - New service hours, after-hours fees, security/janitorial changes (services)
 - New signage rights or exterior alteration restrictions (signs)
+- Term extensions/renewals (premisesAndTerm), expansion or relocation rights (expansionAndRelocation)
+- Tax/CAM/insurance pass-through changes (taxes, operatingExpenses, insurance)
+- Parking, assignment, default, casualty/condemnation, indemnity adjustments
+- Updated notice addresses (notices), new estoppel/subordination requirements
 
-If no changes are found at all, return all four topics with empty field values and certainty "low".`,
+CRITICAL: All 28 topics MUST appear as keys in your JSON response. If no changes are found at all, return every topic with empty value strings and certainty "low".`,
 
   legalNuances: `Section: Legal Nuances (DELTA EXTRACTION)
 
