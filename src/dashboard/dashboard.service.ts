@@ -51,12 +51,29 @@ export class DashboardService {
     @InjectModel(Portfolio.name) private portfolioModel: Model<Portfolio>,
   ) {}
 
-  async getDashboardGeneral(portfolioId?: string) {
-    const filter = portfolioId ? { portfolio_id: portfolioId } : {};
+  async getDashboardGeneral(
+    portfolioId?: string,
+    recentFilter?: string,
+    userId?: string,
+  ) {
+    const portfolioIds = portfolioId
+      ? [portfolioId]
+      : await this.getAccessiblePortfolioIds(userId);
+    const filter = { portfolio_id: { $in: portfolioIds } };
 
-    const properties = await this.propertyModel.find(filter).exec();
-    const taskAlerts = await this.taskAlertModel.find(filter).exec();
-    const leases = await this.leaseModel.find({ ...filter, status: 'processed' }).exec();
+    const properties = portfolioIds.length === 0
+      ? []
+      : await this.propertyModel.find(filter).exec();
+    const recentMode: 'recently_viewed' | 'most_active' | 'recently_added' =
+      recentFilter === 'most_active' || recentFilter === 'recently_added'
+        ? recentFilter
+        : 'recently_viewed';
+    const taskAlerts = portfolioIds.length === 0
+      ? []
+      : await this.taskAlertModel.find(filter).exec();
+    const leases = portfolioIds.length === 0
+      ? []
+      : await this.leaseModel.find({ ...filter, status: 'processed' }).exec();
 
     const propertyMap = new Map(properties.map((p) => [p.propertyId, p]));
 
@@ -80,14 +97,19 @@ export class DashboardService {
         property_name: propertyMap.get(r.property_id)?.property_name || 'Unknown',
       }));
 
-    // Recent properties
-    const recentProperties = properties
+    // Recent properties.
+    // recently_viewed sort actually happens on the client (it owns the view
+    // history in localStorage). The server returns a larger pool sorted by
+    // updatedAt as a fallback ordering for never-viewed properties.
+    const recentSortKey = recentMode === 'recently_added' ? 'createdAt' : 'updatedAt';
+    const recentLimit = recentMode === 'recently_viewed' ? 20 : 6;
+    const recentProperties = [...properties]
       .sort((a, b) => {
         const aDoc = a as any;
         const bDoc = b as any;
-        return new Date(bDoc.updatedAt).getTime() - new Date(aDoc.updatedAt).getTime();
+        return new Date(bDoc[recentSortKey]).getTime() - new Date(aDoc[recentSortKey]).getTime();
       })
-      .slice(0, 6)
+      .slice(0, recentLimit)
       .map((p) => ({
         id: p.propertyId,
         property_name: p.property_name,
@@ -160,6 +182,22 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Returns portfolioIds the user can read from. Mirrors PortfolioService's
+   * ownerFilter — user-owned portfolios plus legacy `user_admin` shared ones.
+   */
+  private async getAccessiblePortfolioIds(userId?: string): Promise<string[]> {
+    const ownerFilter = userId
+      ? { created_by: { $in: [userId, 'user_admin'] } }
+      : { created_by: 'user_admin' };
+    const docs = await this.portfolioModel
+      .find(ownerFilter)
+      .select({ portfolioId: 1, _id: 0 })
+      .lean()
+      .exec();
+    return docs.map((d) => (d as { portfolioId: string }).portfolioId);
+  }
+
   private generateMonthlyChartData(income: number, expenses: number) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months.map((month, i) => {
@@ -171,12 +209,21 @@ export class DashboardService {
     });
   }
 
-  async getDashboardAnalytics(portfolioId?: string) {
-    const filter = portfolioId ? { portfolio_id: portfolioId } : {};
+  async getDashboardAnalytics(portfolioId?: string, userId?: string) {
+    const portfolioIds = portfolioId
+      ? [portfolioId]
+      : await this.getAccessiblePortfolioIds(userId);
+    const filter = { portfolio_id: { $in: portfolioIds } };
 
-    const properties = await this.propertyModel.find(filter).exec();
-    const leases = await this.leaseModel.find({ ...filter, status: 'processed' }).exec();
-    const taskAlerts = await this.taskAlertModel.find(filter).exec();
+    const properties = portfolioIds.length === 0
+      ? []
+      : await this.propertyModel.find(filter).exec();
+    const leases = portfolioIds.length === 0
+      ? []
+      : await this.leaseModel.find({ ...filter, status: 'processed' }).exec();
+    const taskAlerts = portfolioIds.length === 0
+      ? []
+      : await this.taskAlertModel.find(filter).exec();
 
     // KPIs
     const totalProperties = properties.length;

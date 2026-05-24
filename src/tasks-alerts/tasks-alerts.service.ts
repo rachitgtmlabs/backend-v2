@@ -382,59 +382,12 @@ export class TasksAlertsService {
       },
     ];
 
-    const taskSeeds: Array<{
-      severity: TaskAlertSeverity;
-      title: string;
-      sortOrder: number;
-      details?: string;
-    }> = [
-      {
-        severity: 'high',
-        sortOrder: 0,
-        title:
-          'Request prior-year CAM worksheets, invoices summary, and reconciliation from landlord.',
-      },
-      {
-        severity: 'medium',
-        sortOrder: 1,
-        title:
-          'Schedule joint walk-through if lease ties CAM or repair obligations to inspection rights.',
-      },
-      {
-        severity: 'low',
-        sortOrder: 2,
-        title:
-          'Add calendar reminders for reconciliation receipt and tenant objection windows.',
-      },
-      {
-        severity: 'medium',
-        sortOrder: 3,
-        title:
-          'Catalog excluded expense categories (capital, landlord-specific items) against actual billings.',
-      },
-    ];
-
     await this.propertyAlertModel.insertMany(
       alertSeeds.map((s) => ({
         itemId: newAlertItemId(),
         portfolio_id: portfolioId,
         property_id: propertyId,
         lease_id: leaseId,
-        title: s.title,
-        severity: s.severity,
-        sortOrder: s.sortOrder,
-        is_resolved: false,
-        ...(s.details ? { details: s.details } : {}),
-      })),
-    );
-
-    await this.taskAlertModel.insertMany(
-      taskSeeds.map((s) => ({
-        itemId: newTaskItemId(),
-        portfolio_id: portfolioId,
-        property_id: propertyId,
-        lease_id: leaseId,
-        category: 'task',
         title: s.title,
         severity: s.severity,
         sortOrder: s.sortOrder,
