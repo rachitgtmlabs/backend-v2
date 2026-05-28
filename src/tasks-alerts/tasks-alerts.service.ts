@@ -349,6 +349,7 @@ export class TasksAlertsService {
     portfolioId: string,
     propertyId: string,
     leaseId: string,
+    unitId: string | null = null,
   ): Promise<void> {
     const alertSeeds: Array<{
       severity: TaskAlertSeverity;
@@ -388,6 +389,7 @@ export class TasksAlertsService {
         portfolio_id: portfolioId,
         property_id: propertyId,
         lease_id: leaseId,
+        unit_id: unitId,
         title: s.title,
         severity: s.severity,
         sortOrder: s.sortOrder,

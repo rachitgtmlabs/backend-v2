@@ -1,4 +1,11 @@
-import { IsArray, IsNotEmpty, IsString, ValidateNested, IsIn, IsOptional } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsString,
+  ValidateNested,
+  IsIn,
+  IsOptional,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class MessageDto {
@@ -11,18 +18,34 @@ class MessageDto {
   content: string;
 }
 
+/**
+ * Frontend may pass partial context — any of these can be omitted.
+ * The orchestrator falls back to search tools when ids are missing.
+ */
 class ContextDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  portfolio_id: string;
+  portfolio_id?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  property_id: string;
+  property_id?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  lease_id: string;
+  lease_id?: string;
+
+  @IsOptional()
+  @IsString()
+  active_tab?: string;
+
+  @IsOptional()
+  @IsString()
+  focused_widget?: string;
+
+  @IsOptional()
+  @IsString()
+  date_range?: string;
 }
 
 export class ChatRequestDto {
@@ -37,6 +60,27 @@ export class ChatRequestDto {
   context?: ContextDto;
 }
 
+export class CitationDto {
+  text: string;
+  source: 'LEASE' | 'AMENDMENT' | 'TASK' | 'ALERT' | 'CALC';
+}
+
 export class ChatResponseDto {
+  /** Markdown answer for the chat bubble. */
+  answer: string;
+  /** Source tags for what the answer is grounded in. */
+  citations: CitationDto[];
+  /** Dashboard widget keys the frontend should visually highlight. */
+  highlightWidgets: string[];
+  /** Short follow-up question suggestions. */
+  suggestedFollowUps: string[];
+  /** How many replan iterations were used (debug/observability). */
+  iterationsUsed: number;
+  /** Tools that ran (debug/observability). */
+  toolsUsed: string[];
+  /**
+   * Legacy field — kept so older frontends that read `response` still work.
+   * Mirrors `answer`.
+   */
   response: string;
 }

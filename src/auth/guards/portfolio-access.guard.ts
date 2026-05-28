@@ -17,8 +17,8 @@ export class PortfolioAccessGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-    const user = req.user as { _id?: unknown } | undefined;
-    const userId = user?._id ? String(user._id) : undefined;
+    const user = req.user as { organization_id?: string } | undefined;
+    const orgId = user?.organization_id;
 
     const portfolioId =
       readId(req.query?.portfolio_id) ??
@@ -33,7 +33,7 @@ export class PortfolioAccessGuard implements CanActivate {
 
     const allowed = await this.portfolioService.canUserAccess(
       portfolioId,
-      userId,
+      orgId,
     );
     if (!allowed) {
       throw new ForbiddenException('Portfolio not accessible by current user');

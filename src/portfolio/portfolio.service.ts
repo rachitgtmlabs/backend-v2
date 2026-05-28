@@ -13,6 +13,7 @@ import {
   TaskAlert,
   TaskAlertDocumentModel,
 } from '../tasks-alerts/schemas/task-alert.schema';
+import { Unit, UnitDocumentModel } from '../unit/schemas/unit.schema';
 import { CreatePortfolioDto } from './dto/create-portfolio.dto';
 import {
   DocumentRequirement,
@@ -29,15 +30,14 @@ function newDocRequirementId(): string {
 }
 
 /**
- * Legacy portfolios were created before per-user ownership existed and have
- * `created_by: 'user_admin'`. They are visible to all authenticated users so
- * the upgrade path doesn't strand the existing demo data.
+ * Org-scoped filter. Every read is gated by the caller's organization_id —
+ * an unauthenticated/orgless caller matches nothing (fail closed).
+ * `created_by` is retained on the document for attribution but is no longer
+ * part of the access decision.
  */
-const LEGACY_OWNER = 'user_admin';
-
-function ownerFilter(userId?: string): Record<string, unknown> {
-  if (!userId) return { created_by: LEGACY_OWNER };
-  return { created_by: { $in: [userId, LEGACY_OWNER] } };
+function orgFilter(orgId?: string): Record<string, unknown> {
+  if (!orgId) return { _id: null };
+  return { organization_id: orgId };
 }
 
 @Injectable()
@@ -55,9 +55,18 @@ export class PortfolioService {
     private taskAlertModel: Model<TaskAlertDocumentModel>,
     @InjectModel(PropertyAlert.name)
     private propertyAlertModel: Model<PropertyAlertDocumentModel>,
+    @InjectModel(Unit.name)
+    private unitModel: Model<UnitDocumentModel>,
   ) {}
 
-  async create(dto: CreatePortfolioDto, userId?: string) {
+  async create(
+    dto: CreatePortfolioDto,
+    userId: string | undefined,
+    orgId: string | undefined,
+  ) {
+    if (!orgId) {
+      throw new NotFoundException('Organization context required');
+    }
     const p = dto.portfolio;
     const portfolioId = newPortfolioId();
     const document_requirements: DocumentRequirement[] =
@@ -81,15 +90,16 @@ export class PortfolioService {
         source: p.attributes?.source ?? 'ui',
       },
       status: 'active',
-      created_by: userId || LEGACY_OWNER,
+      created_by: userId || 'unknown',
+      organization_id: orgId,
     });
 
     return this.toResponse(doc);
   }
 
-  async findAll(userId?: string) {
+  async findAll(orgId?: string) {
     const docs = await this.portfolioModel
-      .find(ownerFilter(userId))
+      .find(orgFilter(orgId))
       .sort({ createdAt: -1 })
       .exec();
     const ids = docs.map((d) => d.portfolioId);
@@ -180,22 +190,23 @@ export class PortfolioService {
     return n > 0;
   }
 
-  /** True if the user owns the portfolio (or it is a legacy shared portfolio). */
+  /** True if the portfolio belongs to the caller's organization. */
   async canUserAccess(
     portfolioIdRaw: string,
-    userId?: string,
+    orgId?: string,
   ): Promise<boolean> {
+    if (!orgId) return false;
     const portfolioId = portfolioIdRaw.trim();
     const n = await this.portfolioModel
-      .countDocuments({ portfolioId, ...ownerFilter(userId) })
+      .countDocuments({ portfolioId, ...orgFilter(orgId) })
       .exec();
     return n > 0;
   }
 
-  async findOne(portfolioIdRaw: string, userId?: string) {
+  async findOne(portfolioIdRaw: string, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
     const doc = await this.portfolioModel
-      .findOne({ portfolioId, ...ownerFilter(userId) })
+      .findOne({ portfolioId, ...orgFilter(orgId) })
       .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
@@ -209,10 +220,10 @@ export class PortfolioService {
     };
   }
 
-  async update(portfolioIdRaw: string, dto: CreatePortfolioDto, userId?: string) {
+  async update(portfolioIdRaw: string, dto: CreatePortfolioDto, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
     const doc = await this.portfolioModel
-      .findOne({ portfolioId, ...ownerFilter(userId) })
+      .findOne({ portfolioId, ...orgFilter(orgId) })
       .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
@@ -254,9 +265,9 @@ export class PortfolioService {
    * Items deleted when removing a portfolio (leases + amendments).
    * Other collections (tasks, property alerts, properties) are removed without listing every row.
    */
-  async getDeletionImpact(portfolioIdRaw: string, userId?: string) {
+  async getDeletionImpact(portfolioIdRaw: string, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.canUserAccess(portfolioId, userId))) {
+    if (!(await this.canUserAccess(portfolioId, orgId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
@@ -304,9 +315,9 @@ export class PortfolioService {
     };
   }
 
-  async remove(portfolioIdRaw: string, userId?: string) {
+  async remove(portfolioIdRaw: string, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.canUserAccess(portfolioId, userId))) {
+    if (!(await this.canUserAccess(portfolioId, orgId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
@@ -316,6 +327,7 @@ export class PortfolioService {
       .exec();
     await this.amendmentModel.deleteMany({ portfolio_id: portfolioId }).exec();
     await this.leaseModel.deleteMany({ portfolio_id: portfolioId }).exec();
+    await this.unitModel.deleteMany({ portfolio_id: portfolioId }).exec();
     await this.propertyModel
       .deleteMany({
         $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],

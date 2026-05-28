@@ -38,6 +38,13 @@ export class Amendment {
   @Prop({ type: String, index: true, required: true })
   property_id: string;
 
+  /**
+   * Linked unit (e.g. unt_*). Optional during rollout; required after the
+   * one-shot backfill migration. Inherited from the parent lease.
+   */
+  @Prop({ type: String, index: true, default: null })
+  unit_id: string | null;
+
   @Prop({ required: true, enum: ['draft', 'processed'] })
   status: string;
 
@@ -69,9 +76,20 @@ export class Amendment {
    */
   @Prop({ type: [DraftedAmendmentSchema], default: [] })
   drafted_amendments: DraftedAmendment[];
+
+  /**
+   * When an amendment originates from a user manually editing extracted
+   * fields in the View Lease Extraction screen (no uploaded source file),
+   * we stamp the authenticated user identifier here from the JWT. Left null
+   * for uploaded amendments and AI-generated amendments so audit queries
+   * can distinguish "human-touched" deltas from machine-generated ones.
+   */
+  @Prop({ type: String, default: null })
+  edited_by: string | null;
 }
 
 export const AmendmentSchema = SchemaFactory.createForClass(Amendment);
 
 AmendmentSchema.index({ lease_id: 1, version: 1 });
 AmendmentSchema.index({ portfolio_id: 1, property_id: 1, updatedAt: -1 });
+AmendmentSchema.index({ unit_id: 1, version: 1 });

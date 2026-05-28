@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { CurrentUserId } from '../auth/decorators/current-user.decorator';
+import { CurrentOrgId } from '../auth/decorators/current-user.decorator';
 import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { DashboardService } from './dashboard.service';
 
@@ -10,18 +10,18 @@ export class DashboardController {
 
   @Get('general')
   async getGeneralDashboard(
-    @CurrentUserId() userId: string | undefined,
+    @CurrentOrgId() orgId: string | undefined,
     @Query('portfolio_id') portfolioId?: string,
     @Query('recent_filter') recentFilter?: string,
   ) {
-    return this.dashboardService.getDashboardGeneral(portfolioId, recentFilter, userId);
+    return this.dashboardService.getDashboardGeneral(portfolioId, recentFilter, orgId);
   }
 
   @Get('analytics')
   async getAnalyticsDashboard(
-    @CurrentUserId() userId: string | undefined,
+    @CurrentOrgId() orgId: string | undefined,
     @Query('portfolio_id') portfolioId?: string,
   ) {
-    return this.dashboardService.getDashboardAnalytics(portfolioId, userId);
+    return this.dashboardService.getDashboardAnalytics(portfolioId, orgId);
   }
 }

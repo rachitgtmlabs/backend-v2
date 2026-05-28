@@ -54,11 +54,11 @@ export class DashboardService {
   async getDashboardGeneral(
     portfolioId?: string,
     recentFilter?: string,
-    userId?: string,
+    orgId?: string,
   ) {
     const portfolioIds = portfolioId
       ? [portfolioId]
-      : await this.getAccessiblePortfolioIds(userId);
+      : await this.getAccessiblePortfolioIds(orgId);
     const filter = { portfolio_id: { $in: portfolioIds } };
 
     const properties = portfolioIds.length === 0
@@ -183,15 +183,13 @@ export class DashboardService {
   }
 
   /**
-   * Returns portfolioIds the user can read from. Mirrors PortfolioService's
-   * ownerFilter — user-owned portfolios plus legacy `user_admin` shared ones.
+   * Returns portfolioIds the caller's organization can read. Mirrors
+   * PortfolioService's orgFilter — orgless callers see nothing.
    */
-  private async getAccessiblePortfolioIds(userId?: string): Promise<string[]> {
-    const ownerFilter = userId
-      ? { created_by: { $in: [userId, 'user_admin'] } }
-      : { created_by: 'user_admin' };
+  private async getAccessiblePortfolioIds(orgId?: string): Promise<string[]> {
+    if (!orgId) return [];
     const docs = await this.portfolioModel
-      .find(ownerFilter)
+      .find({ organization_id: orgId })
       .select({ portfolioId: 1, _id: 0 })
       .lean()
       .exec();
@@ -209,10 +207,10 @@ export class DashboardService {
     });
   }
 
-  async getDashboardAnalytics(portfolioId?: string, userId?: string) {
+  async getDashboardAnalytics(portfolioId?: string, orgId?: string) {
     const portfolioIds = portfolioId
       ? [portfolioId]
-      : await this.getAccessiblePortfolioIds(userId);
+      : await this.getAccessiblePortfolioIds(orgId);
     const filter = { portfolio_id: { $in: portfolioIds } };
 
     const properties = portfolioIds.length === 0

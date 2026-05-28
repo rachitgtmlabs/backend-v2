@@ -25,3 +25,15 @@ export const CurrentUserId = createParamDecorator(
     return user?._id ? String(user._id) : undefined;
   },
 );
+
+/**
+ * Returns the authenticated user's organization id (`organization_id` on the
+ * User document). All org-scoped queries should filter by this value.
+ */
+export const CurrentOrgId = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest();
+    const user = request.user as { organization_id?: string } | undefined;
+    return user?.organization_id;
+  },
+);

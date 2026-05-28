@@ -11,6 +11,7 @@ import {
   TaskAlert,
   TaskAlertSchema,
 } from '../tasks-alerts/schemas/task-alert.schema';
+import { Unit, UnitSchema } from '../unit/schemas/unit.schema';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioService } from './portfolio.service';
 import { Portfolio, PortfolioSchema } from './schemas/portfolio.schema';
@@ -24,6 +25,7 @@ import { Portfolio, PortfolioSchema } from './schemas/portfolio.schema';
       { name: Amendment.name, schema: AmendmentSchema },
       { name: TaskAlert.name, schema: TaskAlertSchema },
       { name: PropertyAlert.name, schema: PropertyAlertSchema },
+      { name: Unit.name, schema: UnitSchema },
     ]),
   ],
   controllers: [PortfolioController],

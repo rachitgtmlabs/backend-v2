@@ -7,6 +7,7 @@ import { UsersService } from '../../users/users.service';
 interface JwtPayload {
   email?: string;
   sub: string;
+  org?: string;
   iat?: number;
   exp?: number;
 }
@@ -45,6 +46,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.usersService.findById(payload.sub);
     if (!user || user.isActive === false) {
       throw new UnauthorizedException('User no longer active');
+    }
+    // Defense in depth: if the token claims an org, it must still match the
+    // user's current org. Rejects tokens minted before an org reassignment.
+    if (payload.org && user.organization_id && payload.org !== user.organization_id) {
+      throw new UnauthorizedException('Organization mismatch');
     }
     return user;
   }

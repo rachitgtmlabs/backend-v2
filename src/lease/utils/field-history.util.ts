@@ -82,6 +82,8 @@ export interface FieldHistoryRecord {
   versions: FieldVersionRecord[];
 }
 
+export type TimelineEntryKind = 'lease' | 'amendment' | 'drafted_addendum';
+
 export interface AmendmentVersionMetaRecord {
   version: number;
   sourceDocId: string;
@@ -90,6 +92,23 @@ export interface AmendmentVersionMetaRecord {
   changedFieldPaths: string[];
   category: AmendmentCategory;
   annotation?: string;
+  /** Distinguishes pinned timeline entries; defaults to 'amendment' for back-compat. */
+  kind?: TimelineEntryKind;
+  /**
+   * Stable sort key for inserting drafted-addendum interstitials between
+   * integer-versioned amendments (e.g. v1 → 1.001, 1.002, …). Defaults to
+   * `version` when omitted.
+   */
+  sortKey?: number;
+  /** Inline markdown body for drafted-addendum entries (omitted for amendments). */
+  markdown?: string;
+  /** Lightweight pointer back to the source drafted-addendum record. */
+  draftRef?: {
+    amendmentId?: string;
+    draftKey: string;
+  };
+  /** Optional email/identifier of the user who authored this version (manual edits only). */
+  editedBy?: string;
 }
 
 export interface FieldHistoryPayload {
@@ -102,6 +121,15 @@ export interface FieldHistoryPayload {
 // Inputs from the lease.service caller.
 // ---------------------------------------------------------------------------
 
+export interface DraftedAddendumInput {
+  key: string;
+  riskTitle: string;
+  riskSeverity?: string;
+  resolutionLabel?: string;
+  markdown?: string;
+  generatedAt: string;
+}
+
 export interface AmendmentInput {
   amendmentId: string;
   version: number;
@@ -109,6 +137,10 @@ export interface AmendmentInput {
   analysisDelta: Record<string, unknown> | undefined;
   /** Falls back to `createdAt` since real data has no separate effective date. */
   effectiveDate: string;
+  /** User identity stamped on the amendment when the user manually edited fields. */
+  editedBy?: string | null;
+  /** Drafted-addendum entries attached to this amendment, if any. */
+  draftedAddendums?: DraftedAddendumInput[];
 }
 
 export interface BuildFieldHistoryInput {
@@ -116,6 +148,8 @@ export interface BuildFieldHistoryInput {
   originalAnalysis: Record<string, unknown>;
   originalEffectiveDate: string;
   amendments: AmendmentInput[];
+  /** Drafted-addendum entries attached to the original lease (pre any amendment). */
+  originalDraftedAddendums?: DraftedAddendumInput[];
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +157,13 @@ export interface BuildFieldHistoryInput {
 // ---------------------------------------------------------------------------
 
 export function buildFieldHistory(input: BuildFieldHistoryInput): FieldHistoryPayload {
-  const { leaseId, originalAnalysis, originalEffectiveDate, amendments } = input;
+  const {
+    leaseId,
+    originalAnalysis,
+    originalEffectiveDate,
+    amendments,
+    originalDraftedAddendums,
+  } = input;
 
   // Compute the analysis blob at each version by merging deltas sequentially.
   const snapshots: { sourceDocId: string; sourceLabel: string; effectiveDate: string; analysis: Record<string, unknown> }[] = [
@@ -198,8 +238,17 @@ export function buildFieldHistory(input: BuildFieldHistoryInput): FieldHistoryPa
       effectiveDate: originalEffectiveDate,
       changedFieldPaths: [],
       category: 'other',
+      kind: 'lease',
+      sortKey: 0,
     },
   ];
+
+  // Interstitial drafted-addendum entries attached to the original lease (parent version = 0).
+  if (originalDraftedAddendums && originalDraftedAddendums.length > 0) {
+    versionsMeta.push(
+      ...buildDraftedAddendumEntries(originalDraftedAddendums, 0, undefined),
+    );
+  }
 
   for (let i = 0; i < amendments.length; i++) {
     const amd = amendments[i];
@@ -224,14 +273,61 @@ export function buildFieldHistory(input: BuildFieldHistoryInput): FieldHistoryPa
       changedFieldPaths: changedPaths,
       category: dominantCategory(changedTracked),
       annotation: buildAnnotation(fieldHistories, changedTracked, version),
+      kind: 'amendment',
+      sortKey: version,
+      editedBy:
+        typeof amd.editedBy === 'string' && amd.editedBy.length > 0
+          ? amd.editedBy
+          : undefined,
     });
+
+    // Interstitial drafted-addendum entries attached to this amendment.
+    if (amd.draftedAddendums && amd.draftedAddendums.length > 0) {
+      versionsMeta.push(
+        ...buildDraftedAddendumEntries(amd.draftedAddendums, version, amd.amendmentId),
+      );
+    }
   }
+
+  // Final ordering: by sortKey ascending, then by stable insertion order.
+  versionsMeta.sort((a, b) => {
+    const ak = a.sortKey ?? a.version;
+    const bk = b.sortKey ?? b.version;
+    return ak - bk;
+  });
 
   return {
     leaseId,
     versions: versionsMeta,
     fieldHistories,
   };
+}
+
+function buildDraftedAddendumEntries(
+  drafts: DraftedAddendumInput[],
+  parentVersion: number,
+  parentAmendmentId: string | undefined,
+): AmendmentVersionMetaRecord[] {
+  return drafts.map((d, idx) => {
+    const sortKey = parentVersion + (idx + 1) / 1000;
+    const truncatedTitle = (d.riskTitle ?? 'Drafted addendum').slice(0, 40).trim();
+    return {
+      version: parentVersion,
+      sourceDocId: `draft:${d.key}`,
+      sourceLabel: `Draft: ${truncatedTitle}`,
+      effectiveDate: d.generatedAt,
+      changedFieldPaths: [],
+      category: 'other' as AmendmentCategory,
+      annotation: d.resolutionLabel || undefined,
+      kind: 'drafted_addendum' as TimelineEntryKind,
+      sortKey,
+      markdown: d.markdown,
+      draftRef: {
+        amendmentId: parentAmendmentId,
+        draftKey: d.key,
+      },
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

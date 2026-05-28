@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
+import { OrganizationsService } from '../organizations/organizations.service';
 import * as bcrypt from 'bcrypt';
 import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,7 @@ type SafeUser = Omit<Record<string, unknown>, 'password'> & {
   _id: unknown;
   email?: string;
   name?: string;
+  organization_id?: string;
 };
 
 const BCRYPT_ROUNDS = 12;
@@ -28,6 +30,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private organizationsService: OrganizationsService,
   ) {
     this.initializeFirebase();
   }
@@ -78,7 +81,12 @@ export class AuthService {
 
   async login(user: SafeUser | UserDocument | Express.User) {
     const u = user as SafeUser;
-    const payload = { email: u.email, sub: u._id };
+    const payload: {
+      email?: string;
+      sub: unknown;
+      org?: string;
+    } = { email: u.email, sub: u._id };
+    if (u.organization_id) payload.org = u.organization_id;
     return {
       access_token: this.jwtService.sign(payload),
       user: u,
@@ -110,21 +118,28 @@ export class AuthService {
     }
     try {
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const { email, name, picture } = decodedToken;
+      const { email, name, picture, email_verified } = decodedToken;
 
       if (!email) {
         throw new UnauthorizedException('Google account must have an email');
       }
+      if (email_verified === false) {
+        throw new UnauthorizedException('Google email is not verified');
+      }
+
+      const org = await this.organizationsService.resolveForEmail(email);
 
       const user = await this.usersService.findOrCreateSocial({
         email,
         name: name || email.split('@')[0],
         photoURL: picture,
         provider: 'google',
+        organization_id: org.orgId,
       });
 
       return this.login(user.toObject() as SafeUser);
     } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
       const message =
         error instanceof Error ? error.message : String(error);
       this.logger.warn(`Google token verification failed: ${message}`);

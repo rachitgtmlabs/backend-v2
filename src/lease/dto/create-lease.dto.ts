@@ -17,6 +17,16 @@ export class CreateLeaseDto {
   @IsString()
   property_id: string;
 
+  /**
+   * Unit id (e.g. unt_*) under the property. Optional during the rollout
+   * phase — the lease service auto-links to the property's sole active unit
+   * when omitted and the property has exactly one. Becomes required after
+   * Phase 5 of the unit rollout.
+   */
+  @IsOptional()
+  @IsString()
+  unit_id?: string;
+
   @IsIn(['draft', 'processed'])
   status: 'draft' | 'processed';
 

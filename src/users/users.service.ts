@@ -30,6 +30,7 @@ export class UsersService {
     name: string;
     photoURL?: string;
     provider: 'google' | 'phone';
+    organization_id?: string;
   }): Promise<UserDocument> {
     let user;
     if (userData.email) {
@@ -39,11 +40,16 @@ export class UsersService {
     }
 
     if (user) {
+      let dirty = false;
       if (userData.photoURL && user.photoURL !== userData.photoURL) {
         user.photoURL = userData.photoURL;
-        return user.save();
+        dirty = true;
       }
-      return user;
+      if (userData.organization_id && user.organization_id !== userData.organization_id) {
+        user.organization_id = userData.organization_id;
+        dirty = true;
+      }
+      return dirty ? user.save() : user;
     }
 
     return this.create(userData);

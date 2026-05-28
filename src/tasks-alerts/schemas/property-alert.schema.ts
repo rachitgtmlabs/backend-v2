@@ -26,6 +26,13 @@ export class PropertyAlert {
   @Prop({ required: true, index: true })
   lease_id: string;
 
+  /**
+   * Unit (unt_*) the lease belongs to. Optional during rollout; required
+   * after the backfill migration.
+   */
+  @Prop({ type: String, index: true, default: null })
+  unit_id: string | null;
+
   @Prop({ required: true })
   title: string;
 
@@ -59,5 +66,10 @@ export const PropertyAlertSchema = SchemaFactory.createForClass(PropertyAlert);
 PropertyAlertSchema.index({
   portfolio_id: 1,
   property_id: 1,
+  lease_id: 1,
+});
+PropertyAlertSchema.index({
+  portfolio_id: 1,
+  unit_id: 1,
   lease_id: 1,
 });

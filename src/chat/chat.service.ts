@@ -2,11 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { mastra } from '../mastra';
 import { ChatRequestDto, ChatResponseDto } from './dto/chat.dto';
 
-type Message = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -16,49 +11,75 @@ export class ChatService {
 
   async chat(dto: ChatRequestDto): Promise<ChatResponseDto> {
     const { messages, context } = dto;
+    const recent = messages.slice(-ChatService.CHAT_MESSAGE_WINDOW);
+    const lastUser = [...recent].reverse().find((m) => m.role === 'user');
+    const userRequest = lastUser?.content?.trim() ?? '';
 
-    const recentMessages = messages.slice(-ChatService.CHAT_MESSAGE_WINDOW);
-
-    let systemMessage: string;
-    
-    if (context) {
-      systemMessage = `The user's current lease (for tool calls only—do not repeat these IDs or say you loaded anything unless they ask):
-portfolio_id=${context.portfolio_id}
-property_id=${context.property_id}
-lease_id=${context.lease_id}
-
-For lease terms/clauses: call fetch-lease-document with those three values.
-For tasks, alerts, or what to prioritize: call fetch-tasks-alerts with the same portfolio_id, property_id, and lease_id.
-Stay casual; answer only what they asked.`;
-    } else {
-      systemMessage = `No lease is pre-selected. When they name a portfolio, use search-portfolios first; use list-portfolios to browse or if search finds nothing. Then search-properties and fetch-lease-document / fetch-tasks-alerts as needed. If several portfolios or properties match, list numbered options and wait for their choice before assuming. Keep replies casual—no internal IDs or "I fetched" talk unless they ask.`;
+    if (!userRequest) {
+      return this.fallback('Please send a message to ask something.');
     }
-
-    const formattedMessages: Message[] = [
-      { role: 'system', content: systemMessage },
-      ...recentMessages.map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      })),
-    ];
 
     try {
-      const agent = mastra.getAgentById('lease-qa-agent');
-
-      if (!agent) {
-        this.logger.error('Lease agent not found');
-        return { response: 'Sorry, the assistant is currently unavailable.' };
+      const workflow = mastra.getWorkflow('lease-chat-workflow');
+      if (!workflow) {
+        this.logger.error('lease-chat-workflow not registered');
+        return this.fallback('Sorry, the assistant is unavailable.');
       }
 
-      const result = await agent.generate(formattedMessages);
+      const run = await workflow.createRun();
+      const result = await run.start({
+        inputData: {
+          userRequest,
+          uiContext: context ?? {},
+          recentMessages: recent.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        },
+      });
 
-      return { response: result.text || 'I could not generate a response.' };
-    } catch (error) {
-      this.logger.error('Chat generation failed', error);
-      return {
-        response:
-          'Sorry, I encountered an error while processing your request. Please try again.',
+      if (result.status !== 'success') {
+        this.logger.warn(`Workflow finished with status=${result.status}`);
+        return this.fallback(
+          'I could not complete that request. Please try again.',
+        );
+      }
+
+      const out = result.result as {
+        answer: string;
+        citations?: ChatResponseDto['citations'];
+        highlightWidgets?: string[];
+        suggestedFollowUps?: string[];
+        iterationsUsed?: number;
+        toolsUsed?: string[];
       };
+
+      return {
+        answer: out.answer,
+        citations: out.citations ?? [],
+        highlightWidgets: out.highlightWidgets ?? [],
+        suggestedFollowUps: out.suggestedFollowUps ?? [],
+        iterationsUsed: out.iterationsUsed ?? 0,
+        toolsUsed: out.toolsUsed ?? [],
+        response: out.answer,
+      };
+    } catch (error) {
+      this.logger.error('Chat workflow failed', error as Error);
+      return this.fallback(
+        'Sorry, I encountered an error while processing your request. Please try again.',
+      );
     }
+  }
+
+  private fallback(message: string): ChatResponseDto {
+    return {
+      answer: message,
+      citations: [],
+      highlightWidgets: [],
+      suggestedFollowUps: [],
+      iterationsUsed: 0,
+      toolsUsed: [],
+      response: message,
+    };
   }
 }

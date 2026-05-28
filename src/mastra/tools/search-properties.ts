@@ -22,14 +22,15 @@ function escapeRegex(value: string): string {
 
 export const searchPropertiesTool = createTool({
   id: 'search-properties',
-  description: `Search for properties by name or list all properties in a portfolio.
+  description: `Search for properties by name OR address (case-insensitive substring match), and/or list all properties in a specific portfolio.
+The property_name argument matches against BOTH the property_name field and the address field, so street/city names work too.
 If several properties match, show a numbered list and ask which one they mean before fetch-lease-document.
 Use this tool when:
-- The user mentions a property name and you need to find its ID
+- The user mentions a property name, street, or city and you need to find its ID
 - You need to list all properties in a specific portfolio
 - You need to find which portfolio a property belongs to
 
-You can search by property name (partial match) and/or filter by portfolio ID.`,
+Pass portfolio_id ONLY when the user explicitly scoped the question to a portfolio (e.g. "in Silverline"). When the user just names a property, omit portfolio_id so the search covers all portfolios.`,
   inputSchema: z.object({
     property_name: z
       .string()
@@ -72,16 +73,16 @@ You can search by property name (partial match) and/or filter by portfolio ID.`,
       const leasesCollection = db.collection('leases');
 
       const query: Record<string, unknown> = {};
-      
+
       if (portfolio_id) {
         query.portfolio_id = portfolio_id;
       }
-      
+
       if (property_name) {
-        query.property_name = {
-          $regex: escapeRegex(property_name),
-          $options: 'i',
-        };
+        const rx = { $regex: escapeRegex(property_name), $options: 'i' };
+        // Match on property_name OR address — users often refer to a property
+        // by its street or city, not the saved name.
+        query.$or = [{ property_name: rx }, { address: rx }];
       }
 
       const properties = await propertiesCollection

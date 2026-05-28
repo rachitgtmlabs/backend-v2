@@ -51,46 +51,57 @@ For any unchanged field, return its value field as "" with empty citation. Do no
 
   executiveIdentity: `Section: Executive Identity (DELTA EXTRACTION)
 
-Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+Compare the amendment document against the PREVIOUS VALUES provided below. The schema requires ALL nine \`leaseInformation\` fields to be present in your response — \`lease\`, \`property\`, \`leaseFrom\`, \`leaseTo\`, \`squareFeet\`, \`rentPerSqFt\`, \`baseRent\`, \`securityDeposit\`, \`renewalOptions\`. You MUST include every one.
+
+For each field:
+- If the amendment CHANGES it, populate \`value\` (and \`amount\`/\`conditions\` for \`securityDeposit\`) with the NEW post-amendment value, set \`citation\` to the amendment page/section, and fill \`pageReference\` from the amendment's [PAGE N] marker.
+- If the amendment is SILENT on that field, you MUST still include it with \`value: ""\` (or \`amount: ""\`, \`conditions: ""\` for \`securityDeposit\`), \`citation: ""\`, \`pageReference: { page: 0, section: "", highlightText: "" }\`, and \`amendments: []\`. The frontend merger treats empty values as "no change" and keeps the prior value.
 
 Common amendment changes to look for:
-- Changed tenant name (assignment/name change)
-- Extended lease term (new leaseTo date)
-- Changed square footage
-- Changed base rent or rent per square foot
-- Modified security deposit
-- New or modified renewal options
+- Changed tenant name (assignment/name change) → \`leaseTo\`
+- Extended lease term → new \`leaseTo\` date
+- Changed square footage → \`squareFeet\`
+- Changed base rent or rent per square foot → \`baseRent\`, \`rentPerSqFt\`
+- Modified security deposit → \`securityDeposit\`
+- New or modified renewal options → \`renewalOptions\`
 
-If a field is unchanged from the previous version, DO NOT include it in your response.
-If no changes are found, return an object with empty values matching the schema structure.`,
+NEVER omit a field — every one of the nine must be a key in your response, even if empty.`,
 
   financialStack: `Section: Financial Stack (DELTA EXTRACTION)
 
-Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+The schema requires ALL four top-level keys to be present: \`summaryCards\`, \`rentSchedule\`, \`additionalCharges\`, \`lateFees\`. You MUST include every one.
+
+Compare the amendment against the PREVIOUS VALUES provided below.
+
+- \`summaryCards\`: include only cards whose values the amendment CHANGES (still capped at 4). If the amendment changes none, return \`[]\`.
+- \`rentSchedule\`: include only periods that the amendment ADDS or MODIFIES. Empty array if no changes.
+- \`additionalCharges\`: include only charges that are NEW or have CHANGED values. Empty array if none.
+- \`lateFees\`: this is an OBJECT with 7 required leaseFields (\`calculationType\`, \`graceDays\`, \`percent\`, \`secondFeeCalculationType\`, \`secondFeeGrace\`, \`secondFeePercent\`, \`perDayFee\`). The whole object MUST be in your response — never omit it. For each of the 7 fields:
+  - If the amendment CHANGES the late-fee rule, populate \`value\` with the new value, set \`citation\` and \`pageReference\` from the amendment, and add an entry to \`amendments\`.
+  - If the amendment is SILENT on that field, include it with \`value: ""\`, \`citation: ""\`, \`pageReference: { page: 0, section: "", highlightText: "" }\`, \`amendments: []\`. The frontend merger treats empty values as "no change" and keeps the prior value.
 
 Common amendment changes to look for:
 - New or modified rent schedule rows (different amounts, dates, escalations)
 - Changed summaryCards values (new total value, monthly payment, escalation %)
 - Modified or new additional charges (CAM, taxes, insurance adjustments)
-- Base year changes
-
-For rentSchedule: if a new period is added or an existing period is modified, include it.
-For additionalCharges: only include charges that are new or have changed values.
-If no changes are found, return an object with empty values matching the schema structure.`,
+- Late-fee penalty changes (grace period, percent, per-day fee)
+- Base year changes`,
 
   criticalDeadlines: `Section: Critical Deadlines (DELTA EXTRACTION)
 
-Compare the amendment document against the PREVIOUS VALUES provided below. Extract ONLY fields that have CHANGED.
+The schema requires ALL three top-level keys to be present in your response: \`riskSummary\`, \`milestones\`, \`risks\`. You MUST include every one — never omit a key.
+
+Compare the amendment against the PREVIOUS VALUES provided below.
+
+- \`milestones\`: array — include only NEW milestones or ones whose date/severity the amendment CHANGES. Empty array \`[]\` if no changes.
+- \`risks\`: array — include only NEW risk cards introduced by the amendment. Empty array \`[]\` if none.
+- \`riskSummary\`: object with required integer fields \`high\`, \`medium\`, \`low\`. Count the items in your delta \`milestones\` array at each severity level. If \`milestones\` is empty, set all three to \`0\`. Always include the object with all three keys.
 
 Common amendment changes to look for:
 - New milestones (new dates, new obligations)
 - Extended or modified existing deadlines
 - Changed notice periods
-- New or modified risk factors
-
-For milestones: only include NEW milestones or ones with CHANGED dates/descriptions.
-For risks: only include NEW risk assessments related to the amendment.
-If no changes are found, return an object with empty milestones and risks arrays, and riskSummary with zero counts.`,
+- New or modified risk factors`,
 
   operationalGuardrails: `Section: Operational Guardrails (DELTA EXTRACTION)
 

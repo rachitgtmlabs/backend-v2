@@ -8,11 +8,13 @@ import { LeaseModule } from './lease/lease.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { PropertyModule } from './property/property.module';
 import { TasksAlertsModule } from './tasks-alerts/tasks-alerts.module';
+import { UnitModule } from './unit/unit.module';
 import { ChatModule } from './chat/chat.module';
 import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { UsersModule } from './users/users.module';
     }),
     PortfolioModule,
     PropertyModule,
+    UnitModule,
     LeaseModule,
     LeaseAnalysisModule,
     AmendmentAnalysisModule,
@@ -34,6 +37,7 @@ import { UsersModule } from './users/users.module';
     DashboardModule,
     AuthModule,
     UsersModule,
+    OrganizationsModule,
   ],
   providers: [MongoIndexesService],
 })
