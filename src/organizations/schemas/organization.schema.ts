@@ -21,6 +21,11 @@ export class Organization {
 
   @Prop({ required: true, default: 'domain' })
   kind: OrganizationKind;
+
+  // IANA timezone used to decide when this org's "6 AM" daily briefing fires
+  // and to label briefing timestamps. Defaults until set in org settings.
+  @Prop({ required: true, default: 'America/New_York' })
+  timezone: string;
 }
 
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

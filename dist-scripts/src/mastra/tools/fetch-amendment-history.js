@@ -4,6 +4,7 @@ exports.fetchAmendmentHistoryTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 function flatten(obj, prefix = '') {
     const out = {};
     for (const [k, v] of Object.entries(obj)) {
@@ -45,13 +46,17 @@ exports.fetchAmendmentHistoryTool = (0, tools_1.createTool)({
             .optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { lease_id, fieldFilter } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
             const db = await (0, mongo_1.getDb)();
             const lease = await db.collection('leases').findOne({ leaseId: lease_id });
             if (!lease) {
                 return { success: false, error: `Lease not found: ${lease_id}` };
+            }
+            if (!(await (0, rbac_1.assertPortfolioAccess)(String(lease.portfolio_id), orgId))) {
+                return (0, rbac_1.noAccess)('lease');
             }
             const amendments = await db
                 .collection('amendments')

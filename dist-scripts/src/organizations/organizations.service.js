@@ -52,6 +52,9 @@ let OrganizationsService = class OrganizationsService {
     findByOrgId(orgId) {
         return this.orgModel.findOne({ orgId }).exec();
     }
+    listAll() {
+        return this.orgModel.find().exec();
+    }
 };
 exports.OrganizationsService = OrganizationsService;
 exports.OrganizationsService = OrganizationsService = __decorate([

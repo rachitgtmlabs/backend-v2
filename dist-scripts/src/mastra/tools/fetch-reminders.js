@@ -4,6 +4,7 @@ exports.fetchRemindersTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.fetchRemindersTool = (0, tools_1.createTool)({
     id: 'fetch-reminders',
     description: `Returns upcoming deadline reminders: drafted-amendment reminders with reminderIso dates AND property alerts with a due_timeline. Sorted by date. Use when the user asks "what deadlines are coming up?", "what's due this week?", or wants reminders.`,
@@ -30,16 +31,30 @@ exports.fetchRemindersTool = (0, tools_1.createTool)({
         total: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, withinDays, limit } = inputData;
         try {
-            const db = await (0, mongo_1.getDb)();
-            const leaseFilter = {};
-            const alertFilter = { is_resolved: false };
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let scopedPortfolioIds;
             if (portfolio_id) {
-                leaseFilter.portfolio_id = portfolio_id;
-                alertFilter.portfolio_id = portfolio_id;
+                if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                    return (0, rbac_1.noAccess)('reminders');
+                }
+                scopedPortfolioIds = [portfolio_id];
             }
+            else {
+                scopedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (scopedPortfolioIds.length === 0) {
+                    return { success: true, reminders: [], total: 0 };
+                }
+            }
+            const db = await (0, mongo_1.getDb)();
+            const scopeClause = { portfolio_id: { $in: scopedPortfolioIds } };
+            const leaseFilter = { ...scopeClause };
+            const alertFilter = {
+                ...scopeClause,
+                is_resolved: false,
+            };
             if (property_id) {
                 leaseFilter.property_id = property_id;
                 alertFilter.property_id = property_id;

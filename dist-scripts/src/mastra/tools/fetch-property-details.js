@@ -4,6 +4,7 @@ exports.fetchPropertyDetailsTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.fetchPropertyDetailsTool = (0, tools_1.createTool)({
     id: 'fetch-property-details',
     description: `Returns details for a single property: metadata, the latest lease summary (lease id, status, file name, version), count of amendments, and counts of open tasks/alerts. Use when the user asks "tell me about <property>" or wants a property snapshot before drilling into a lease.`,
@@ -37,9 +38,13 @@ exports.fetchPropertyDetailsTool = (0, tools_1.createTool)({
         openAlerts: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                return (0, rbac_1.noAccess)('property');
+            }
             const db = await (0, mongo_1.getDb)();
             const [property, latestLease] = await Promise.all([
                 db

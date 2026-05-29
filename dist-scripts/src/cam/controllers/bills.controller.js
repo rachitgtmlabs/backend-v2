@@ -14,16 +14,30 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BillsController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
+const multer_1 = require("multer");
 const portfolio_access_guard_1 = require("../../auth/guards/portfolio-access.guard");
 const bill_dto_1 = require("../dto/bill.dto");
 const bills_service_1 = require("../services/bills.service");
+const bills_upload_service_1 = require("../services/bills-upload.service");
 const require_query_1 = require("../utils/require-query");
 let BillsController = class BillsController {
-    constructor(svc) {
+    constructor(svc, upload) {
         this.svc = svc;
+        this.upload = upload;
     }
     create(dto) {
         return this.svc.create(dto);
+    }
+    uploadBill(file, portfolioId, propertyId, sessionId) {
+        if (!file)
+            throw new common_1.BadRequestException('Multipart field "file" is required');
+        return this.upload.uploadAndExtract({
+            portfolio_id: (0, require_query_1.requireQuery)(portfolioId, 'portfolio_id'),
+            property_id: (0, require_query_1.requireQuery)(propertyId, 'property_id'),
+            session_id: sessionId?.trim() || undefined,
+            file,
+        });
     }
     list(portfolioId, propertyId, status, sessionId, from, to) {
         return this.svc.list({
@@ -58,6 +72,20 @@ __decorate([
     __metadata("design:paramtypes", [bill_dto_1.CreateBillDto]),
     __metadata("design:returntype", void 0)
 ], BillsController.prototype, "create", null);
+__decorate([
+    (0, common_1.Post)('upload'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
+        storage: (0, multer_1.memoryStorage)(),
+        limits: { fileSize: 25 * 1024 * 1024 },
+    })),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Query)('portfolio_id')),
+    __param(2, (0, common_1.Query)('property_id')),
+    __param(3, (0, common_1.Query)('session_id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, Object, Object]),
+    __metadata("design:returntype", void 0)
+], BillsController.prototype, "uploadBill", null);
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Query)('portfolio_id')),
@@ -105,6 +133,7 @@ __decorate([
 exports.BillsController = BillsController = __decorate([
     (0, common_1.Controller)('cam/bills'),
     (0, common_1.UseGuards)(portfolio_access_guard_1.PortfolioAccessGuard),
-    __metadata("design:paramtypes", [bills_service_1.BillsService])
+    __metadata("design:paramtypes", [bills_service_1.BillsService,
+        bills_upload_service_1.BillsUploadService])
 ], BillsController);
 //# sourceMappingURL=bills.controller.js.map

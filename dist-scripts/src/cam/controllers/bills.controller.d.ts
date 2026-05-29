@@ -1,8 +1,10 @@
 import { CreateBillDto, TransitionBillDto, UpdateBillDto } from '../dto/bill.dto';
 import { BillsService } from '../services/bills.service';
+import { BillsUploadService } from '../services/bills-upload.service';
 export declare class BillsController {
     private readonly svc;
-    constructor(svc: BillsService);
+    private readonly upload;
+    constructor(svc: BillsService, upload: BillsUploadService);
     create(dto: CreateBillDto): Promise<{
         billId: any;
         portfolio_id: any;
@@ -31,6 +33,7 @@ export declare class BillsController {
         createdAt: any;
         updatedAt: any;
     }>;
+    uploadBill(file: Express.Multer.File, portfolioId: string | undefined, propertyId: string | undefined, sessionId: string | undefined): Promise<import("../services/bills-upload.service").UploadResult>;
     list(portfolioId: string | undefined, propertyId: string | undefined, status: string | undefined, sessionId: string | undefined, from: string | undefined, to: string | undefined): Promise<{
         billId: any;
         portfolio_id: any;

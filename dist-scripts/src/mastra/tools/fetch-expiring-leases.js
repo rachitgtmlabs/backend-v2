@@ -4,6 +4,7 @@ exports.fetchExpiringLeasesTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 const DATE_KEYS = [
     'lease_end_date',
     'expiration_date',
@@ -52,13 +53,28 @@ exports.fetchExpiringLeasesTool = (0, tools_1.createTool)({
         total: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, withinDays, limit } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let scopedPortfolioIds;
+            if (portfolio_id) {
+                if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                    return (0, rbac_1.noAccess)('leases');
+                }
+                scopedPortfolioIds = [portfolio_id];
+            }
+            else {
+                scopedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (scopedPortfolioIds.length === 0) {
+                    return { success: true, leases: [], total: 0 };
+                }
+            }
             const db = await (0, mongo_1.getDb)();
-            const filter = { status: 'processed' };
-            if (portfolio_id)
-                filter.portfolio_id = portfolio_id;
+            const filter = {
+                status: 'processed',
+                portfolio_id: { $in: scopedPortfolioIds },
+            };
             if (property_id)
                 filter.property_id = property_id;
             const leases = await db.collection('leases').find(filter).toArray();

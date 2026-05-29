@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UnitModule = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
+const lease_schema_1 = require("../lease/schemas/lease.schema");
 const portfolio_module_1 = require("../portfolio/portfolio.module");
 const property_module_1 = require("../property/property.module");
 const unit_schema_1 = require("./schemas/unit.schema");
@@ -20,7 +21,10 @@ exports.UnitModule = UnitModule;
 exports.UnitModule = UnitModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            mongoose_1.MongooseModule.forFeature([{ name: unit_schema_1.Unit.name, schema: unit_schema_1.UnitSchema }]),
+            mongoose_1.MongooseModule.forFeature([
+                { name: unit_schema_1.Unit.name, schema: unit_schema_1.UnitSchema },
+                { name: lease_schema_1.Lease.name, schema: lease_schema_1.LeaseSchema },
+            ]),
             portfolio_module_1.PortfolioModule,
             property_module_1.PropertyModule,
         ],

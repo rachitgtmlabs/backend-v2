@@ -16,22 +16,36 @@ exports.ChatController = void 0;
 const common_1 = require("@nestjs/common");
 const chat_service_1 = require("./chat.service");
 const chat_dto_1 = require("./dto/chat.dto");
+const current_user_decorator_1 = require("../auth/decorators/current-user.decorator");
 let ChatController = class ChatController {
     constructor(chatService) {
         this.chatService = chatService;
     }
-    async chat(dto) {
-        return this.chatService.chat(dto);
+    async chat(dto, orgId) {
+        return this.chatService.chat(dto, orgId);
+    }
+    async chatStream(dto, orgId, res) {
+        await this.chatService.streamChat(dto, orgId, res);
     }
 };
 exports.ChatController = ChatController;
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentOrgId)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [chat_dto_1.ChatRequestDto]),
+    __metadata("design:paramtypes", [chat_dto_1.ChatRequestDto, Object]),
     __metadata("design:returntype", Promise)
 ], ChatController.prototype, "chat", null);
+__decorate([
+    (0, common_1.Post)('stream'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentOrgId)()),
+    __param(2, (0, common_1.Res)({ passthrough: false })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [chat_dto_1.ChatRequestDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ChatController.prototype, "chatStream", null);
 exports.ChatController = ChatController = __decorate([
     (0, common_1.Controller)('chat'),
     __metadata("design:paramtypes", [chat_service_1.ChatService])

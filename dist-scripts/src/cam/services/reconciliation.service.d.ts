@@ -1,4 +1,5 @@
 import { Model } from 'mongoose';
+import { LeaseDocumentModel } from '../../lease/schemas/lease.schema';
 import { UnitDocumentModel } from '../../unit/schemas/unit.schema';
 import { type ReconDiff } from '../engine';
 import { BillDocumentModel } from '../schemas/bill.schema';
@@ -9,8 +10,9 @@ export declare class ReconciliationService {
     private readonly unitModel;
     private readonly invoiceModel;
     private readonly runModel;
+    private readonly leaseModel;
     private readonly logger;
-    constructor(billModel: Model<BillDocumentModel>, unitModel: Model<UnitDocumentModel>, invoiceModel: Model<TenantInvoiceDocumentModel>, runModel: Model<ReconciliationRunDocumentModel>);
+    constructor(billModel: Model<BillDocumentModel>, unitModel: Model<UnitDocumentModel>, invoiceModel: Model<TenantInvoiceDocumentModel>, runModel: Model<ReconciliationRunDocumentModel>, leaseModel: Model<LeaseDocumentModel>);
     run(args: {
         portfolio_id: string;
         property_id: string;
@@ -45,4 +47,5 @@ export declare class ReconciliationService {
     getRun(portfolioId: string, runId: string): Promise<import("mongoose").FlattenMaps<ReconciliationRunDocumentModel> & Required<{
         _id: import("mongoose").Types.ObjectId;
     }>>;
+    private resolveTenantNamesForUnits;
 }

@@ -4,6 +4,7 @@ exports.fetchOpenTasksTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.fetchOpenTasksTool = (0, tools_1.createTool)({
     id: 'fetch-open-tasks',
     description: `Returns unresolved tasks across a portfolio (or a single property), sorted by severity. Use when the user asks "what's on my plate?", "what do I need to do?", or "show me open tasks".`,
@@ -28,16 +29,29 @@ exports.fetchOpenTasksTool = (0, tools_1.createTool)({
         total: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, limit } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let scopedPortfolioIds;
+            if (portfolio_id) {
+                if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                    return (0, rbac_1.noAccess)('tasks');
+                }
+                scopedPortfolioIds = [portfolio_id];
+            }
+            else {
+                scopedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (scopedPortfolioIds.length === 0) {
+                    return { success: true, tasks: [], total: 0 };
+                }
+            }
             const db = await (0, mongo_1.getDb)();
             const filter = {
                 category: 'task',
                 is_resolved: false,
+                portfolio_id: { $in: scopedPortfolioIds },
             };
-            if (portfolio_id)
-                filter.portfolio_id = portfolio_id;
             if (property_id)
                 filter.property_id = property_id;
             const docs = await db

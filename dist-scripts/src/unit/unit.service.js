@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const crypto_1 = require("crypto");
 const mongoose_2 = require("mongoose");
+const lease_schema_1 = require("../lease/schemas/lease.schema");
 const portfolio_service_1 = require("../portfolio/portfolio.service");
 const property_service_1 = require("../property/property.service");
 const unit_schema_1 = require("./schemas/unit.schema");
@@ -27,8 +28,9 @@ function newUnitId() {
 }
 const FUZZY_MATCH_DISTANCE_THRESHOLD = 2;
 let UnitService = UnitService_1 = class UnitService {
-    constructor(unitModel, portfolioService, propertyService) {
+    constructor(unitModel, leaseModel, portfolioService, propertyService) {
         this.unitModel = unitModel;
+        this.leaseModel = leaseModel;
         this.portfolioService = portfolioService;
         this.propertyService = propertyService;
         this.logger = new common_1.Logger(UnitService_1.name);
@@ -91,7 +93,35 @@ let UnitService = UnitService_1 = class UnitService {
             .find({ portfolio_id: pf, property_id: pr })
             .sort({ status: 1, createdAt: 1 })
             .exec();
-        return { units: docs.map((d) => this.toUnitPayload(d)) };
+        const unitIds = docs.map((d) => d.unitId);
+        const leases = unitIds.length === 0
+            ? []
+            : await this.leaseModel
+                .find({
+                portfolio_id: pf,
+                unit_id: { $in: unitIds },
+                status: 'processed',
+            })
+                .sort({ updatedAt: -1 })
+                .lean();
+        const latestLeaseByUnit = new Map();
+        for (const l of leases) {
+            if (!l.unit_id)
+                continue;
+            if (!latestLeaseByUnit.has(l.unit_id)) {
+                latestLeaseByUnit.set(l.unit_id, l);
+            }
+        }
+        return {
+            units: docs.map((d) => {
+                const base = this.toUnitPayload(d);
+                const lease = latestLeaseByUnit.get(d.unitId);
+                return {
+                    ...base,
+                    ...summarizeLease(lease, d.sqft_rentable),
+                };
+            }),
+        };
     }
     async getOne(portfolioId, unitId) {
         const doc = await this.findInPortfolioOrThrow(portfolioId.trim(), unitId.trim());
@@ -127,6 +157,27 @@ let UnitService = UnitService_1 = class UnitService {
             doc.status = dto.status;
         if (dto.notes !== undefined)
             doc.notes = dto.notes || null;
+        if (dto.occupancy_status !== undefined) {
+            doc.occupancy_status = dto.occupancy_status;
+        }
+        if (dto.cam_allocation !== undefined) {
+            if (dto.cam_allocation === null) {
+                doc.cam_allocation = null;
+            }
+            else {
+                const p = dto.cam_allocation;
+                doc.cam_allocation = {
+                    base_amount: p.base_amount,
+                    base_year: p.base_year,
+                    share_pct: p.share_pct,
+                    exclusions: p.exclusions ?? [],
+                    admin_fee_pct: p.admin_fee_pct ?? null,
+                    rule_ids: p.rule_ids ?? [],
+                    rule_name: p.rule_name ?? '',
+                    source: p.source ?? 'manual_override',
+                };
+            }
+        }
         try {
             const saved = await doc.save();
             return { unit: this.toUnitPayload(saved) };
@@ -238,6 +289,19 @@ let UnitService = UnitService_1 = class UnitService {
             parking_count: doc.parking_count,
             status: doc.status,
             notes: doc.notes,
+            occupancy_status: doc.occupancy_status,
+            cam_allocation: doc.cam_allocation
+                ? {
+                    base_amount: doc.cam_allocation.base_amount,
+                    base_year: doc.cam_allocation.base_year,
+                    share_pct: doc.cam_allocation.share_pct,
+                    exclusions: doc.cam_allocation.exclusions ?? [],
+                    admin_fee_pct: doc.cam_allocation.admin_fee_pct ?? null,
+                    rule_ids: doc.cam_allocation.rule_ids ?? [],
+                    rule_name: doc.cam_allocation.rule_name ?? '',
+                    source: doc.cam_allocation.source,
+                }
+                : null,
             is_default_migrated: doc.is_default_migrated,
             audit: {
                 created_at: doc.createdAt?.toISOString() ?? new Date().toISOString(),
@@ -270,7 +334,9 @@ exports.UnitService = UnitService;
 exports.UnitService = UnitService = UnitService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(unit_schema_1.Unit.name)),
+    __param(1, (0, mongoose_1.InjectModel)(lease_schema_1.Lease.name)),
     __metadata("design:paramtypes", [mongoose_2.Model,
+        mongoose_2.Model,
         portfolio_service_1.PortfolioService,
         property_service_1.PropertyService])
 ], UnitService);
@@ -299,5 +365,44 @@ function levenshtein(a, b) {
         [prev, curr] = [curr, prev];
     }
     return prev[b.length];
+}
+function summarizeLease(lease, sqftRentable) {
+    if (!lease) {
+        return {
+            current_lease_id: null,
+            tenant_name: null,
+            base_rent_annual: null,
+            rent_per_sqft: null,
+            lease_end: null,
+        };
+    }
+    const info = lease.lease_information
+        ?.leaseInformation ?? {};
+    const tenant = typeof info.leaseTo?.value === 'string' && info.leaseTo.value.trim()
+        ? String(info.leaseTo.value).trim()
+        : typeof info.tenant?.value === 'string' && info.tenant.value.trim()
+            ? String(info.tenant.value).trim()
+            : null;
+    const rentPerSqft = parseMoneyLeading(info.rentPerSqFt?.value);
+    const baseRentAnnual = rentPerSqft != null && sqftRentable != null && sqftRentable > 0
+        ? Math.round(rentPerSqft * sqftRentable * 100) / 100
+        : null;
+    return {
+        current_lease_id: lease.leaseId,
+        tenant_name: tenant,
+        base_rent_annual: baseRentAnnual,
+        rent_per_sqft: rentPerSqft,
+        lease_end: null,
+    };
+}
+function parseMoneyLeading(raw) {
+    if (raw == null)
+        return null;
+    const s = String(raw);
+    const m = s.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!m)
+        return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
 }
 //# sourceMappingURL=unit.service.js.map

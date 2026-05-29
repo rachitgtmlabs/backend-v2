@@ -1,21 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listPortfoliosTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
-const mongoose_1 = __importDefault(require("mongoose"));
-const connectionString = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-let cachedConnection = null;
-async function getConnection() {
-    if (cachedConnection?.connection?.readyState === 1) {
-        return cachedConnection;
-    }
-    cachedConnection = await mongoose_1.default.connect(connectionString);
-    return cachedConnection;
-}
+const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.listPortfoliosTool = (0, tools_1.createTool)({
     id: 'list-portfolios',
     description: `Lists all portfolios (name and id). Use when the user wants the full catalog, or when search-portfolios returns no matches and you need to show what exists. For a name the user gave, prefer search-portfolios first.`,
@@ -32,16 +21,13 @@ exports.listPortfoliosTool = (0, tools_1.createTool)({
             .optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async () => {
+    execute: async (_inputData, context) => {
         try {
-            const conn = await getConnection();
-            const db = conn.connection.db;
-            if (!db) {
-                return { success: false, error: 'Database connection not available' };
-            }
-            const portfoliosCollection = db.collection('portfolios');
-            const portfolios = await portfoliosCollection
-                .find({})
+            const orgId = (0, rbac_1.getOrgId)(context);
+            const db = await (0, mongo_1.getDb)();
+            const portfolios = await db
+                .collection('portfolios')
+                .find((0, rbac_1.orgPortfolioFilter)(orgId))
                 .project({
                 portfolioId: 1,
                 name: 1,

@@ -16,6 +16,8 @@ exports.TOOL_NAMES = [
     'fetch-open-tasks',
     'fetch-expiring-leases',
     'fetch-cam-data',
+    'fetch-cam-rules',
+    'fetch-cam-reconciliation',
     'fetch-lease-clauses',
     'fetch-reminders',
 ];

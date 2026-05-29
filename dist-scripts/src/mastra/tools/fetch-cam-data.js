@@ -4,6 +4,7 @@ exports.fetchCamDataTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 const CAM_KEYS_REGEX = /cam|common[_ ]area|operating[_ ]expense|opex/i;
 function pickCamFields(info) {
     const out = {};
@@ -45,9 +46,13 @@ exports.fetchCamDataTool = (0, tools_1.createTool)({
             .optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, lease_id: leaseIdInput } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                return (0, rbac_1.noAccess)('CAM data');
+            }
             const db = await (0, mongo_1.getDb)();
             let lease;
             if (leaseIdInput) {

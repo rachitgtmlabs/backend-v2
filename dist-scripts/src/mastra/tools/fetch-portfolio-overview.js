@@ -4,6 +4,7 @@ exports.fetchPortfolioOverviewTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.fetchPortfolioOverviewTool = (0, tools_1.createTool)({
     id: 'fetch-portfolio-overview',
     description: `Returns portfolio-level KPIs: total properties, total leases, processed lease count, open alert counts (by severity), and a count of leases expiring within the next 12 months. Use when the user asks how a portfolio is performing, KPIs, totals, or a high-level summary.`,
@@ -44,29 +45,58 @@ exports.fetchPortfolioOverviewTool = (0, tools_1.createTool)({
         expiringIn12Months: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let scopedPortfolioIds;
+            if (portfolio_id) {
+                const ok = await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId);
+                if (!ok)
+                    return (0, rbac_1.noAccess)('portfolio');
+                scopedPortfolioIds = [portfolio_id];
+            }
+            else {
+                scopedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (scopedPortfolioIds.length === 0) {
+                    return {
+                        success: true,
+                        totals: {
+                            portfolios: 0,
+                            properties: 0,
+                            leases: 0,
+                            processedLeases: 0,
+                            amendments: 0,
+                        },
+                        alertCounts: {
+                            critical: 0,
+                            high: 0,
+                            medium: 0,
+                            low: 0,
+                            total: 0,
+                        },
+                        openTaskCount: 0,
+                        expiringIn12Months: 0,
+                    };
+                }
+            }
             const db = await (0, mongo_1.getDb)();
-            const propertyFilter = {};
-            const leaseFilter = {};
-            const amendmentFilter = {};
-            const alertFilter = {};
+            const scopeClause = { portfolio_id: { $in: scopedPortfolioIds } };
+            const propertyFilter = { ...scopeClause };
+            const leaseFilter = { ...scopeClause };
+            const amendmentFilter = { ...scopeClause };
+            const alertFilter = { ...scopeClause };
             const taskFilter = {
+                ...scopeClause,
                 category: 'task',
                 is_resolved: false,
             };
-            if (portfolio_id) {
-                propertyFilter.portfolio_id = portfolio_id;
-                leaseFilter.portfolio_id = portfolio_id;
-                amendmentFilter.portfolio_id = portfolio_id;
-                alertFilter.portfolio_id = portfolio_id;
-                taskFilter.portfolio_id = portfolio_id;
-            }
             const [portfolioCount, propertyCount, leaseCount, processedLeaseCount, amendmentCount, portfolioDoc, alertsNew, alertsLegacy, openTaskCount, leases,] = await Promise.all([
                 db
                     .collection('portfolios')
-                    .countDocuments(portfolio_id ? { portfolioId: portfolio_id } : {}),
+                    .countDocuments(portfolio_id
+                    ? { portfolioId: portfolio_id, ...(0, rbac_1.orgPortfolioFilter)(orgId) }
+                    : (0, rbac_1.orgPortfolioFilter)(orgId)),
                 db.collection('properties').countDocuments(propertyFilter),
                 db.collection('leases').countDocuments(leaseFilter),
                 db
@@ -74,7 +104,10 @@ exports.fetchPortfolioOverviewTool = (0, tools_1.createTool)({
                     .countDocuments({ ...leaseFilter, status: 'processed' }),
                 db.collection('amendments').countDocuments(amendmentFilter),
                 portfolio_id
-                    ? db.collection('portfolios').findOne({ portfolioId: portfolio_id })
+                    ? db.collection('portfolios').findOne({
+                        portfolioId: portfolio_id,
+                        ...(0, rbac_1.orgPortfolioFilter)(orgId),
+                    })
                     : Promise.resolve(null),
                 db.collection('property_alerts').find(alertFilter).toArray(),
                 db

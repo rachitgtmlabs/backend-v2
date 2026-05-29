@@ -100,11 +100,20 @@ function buildPrompt(state) {
         .filter(Boolean)
         .join('\n');
 }
+async function emit(writer, event) {
+    if (!writer)
+        return;
+    try {
+        await writer.write(event);
+    }
+    catch {
+    }
+}
 exports.orchestratorStep = (0, workflows_1.createStep)({
     id: 'lease-orchestrator-step',
     inputSchema: schemas_1.dagStateSchema,
     outputSchema: schemas_1.dagStateSchema,
-    execute: async ({ inputData, mastra }) => {
+    execute: async ({ inputData, mastra, writer }) => {
         const state = inputData;
         const agent = mastra?.getAgentById('lease-orchestrator-agent');
         if (!agent) {
@@ -120,6 +129,12 @@ exports.orchestratorStep = (0, workflows_1.createStep)({
                 ],
             };
         }
+        await emit(writer, {
+            type: 'status',
+            stage: 'planning',
+            state: 'started',
+            iteration: state.iteration,
+        });
         const prompt = buildPrompt(state);
         let parsed = null;
         let lastError = null;
@@ -159,6 +174,13 @@ exports.orchestratorStep = (0, workflows_1.createStep)({
                 ],
             };
         }
+        await emit(writer, {
+            type: 'status',
+            stage: 'planning',
+            state: 'completed',
+            iteration: state.iteration,
+            thought: parsed.thought,
+        });
         return {
             ...state,
             isComplete: parsed.isComplete,

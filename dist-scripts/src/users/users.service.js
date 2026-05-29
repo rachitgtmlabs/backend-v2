@@ -30,6 +30,21 @@ let UsersService = class UsersService {
     async findById(id) {
         return this.userModel.findById(id).exec();
     }
+    async findBriefingSubscribers(orgId) {
+        return this.userModel
+            .find({
+            organization_id: orgId,
+            briefingEmailOptIn: true,
+            email: { $exists: true, $ne: null },
+        })
+            .exec();
+    }
+    async setBriefingEmailOptIn(userId, enabled) {
+        await this.userModel
+            .updateOne({ _id: userId }, { $set: { briefingEmailOptIn: enabled } })
+            .exec();
+        return enabled;
+    }
     async create(userData) {
         const newUser = new this.userModel(userData);
         return newUser.save();

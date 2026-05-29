@@ -6,6 +6,7 @@ export declare class Organization {
     name: string;
     domain: string;
     kind: OrganizationKind;
+    timezone: string;
 }
 export declare const OrganizationSchema: import("mongoose").Schema<Organization, import("mongoose").Model<Organization, any, any, any, import("mongoose").Document<unknown, any, Organization, any, {}> & Organization & {
     _id: import("mongoose").Types.ObjectId;

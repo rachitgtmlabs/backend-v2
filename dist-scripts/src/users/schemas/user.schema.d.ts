@@ -9,6 +9,7 @@ export declare class User {
     provider: 'local' | 'google' | 'phone';
     isActive: boolean;
     organization_id?: string;
+    briefingEmailOptIn: boolean;
 }
 export declare const UserSchema: import("mongoose").Schema<User, import("mongoose").Model<User, any, any, any, Document<unknown, any, User, any, {}> & User & {
     _id: import("mongoose").Types.ObjectId;

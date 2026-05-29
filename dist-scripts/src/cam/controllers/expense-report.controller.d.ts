@@ -5,6 +5,7 @@ export declare class ExpenseReportController {
     byCategory(portfolioId: string | undefined, propertyId: string | undefined, unitId: string | undefined, year: string | undefined, from: string | undefined, to: string | undefined): Promise<{
         total_invoiced: any;
         categories: any[];
+        top_vendors: any[];
         scope: {
             kind: string;
             unit_id: string;

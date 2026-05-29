@@ -6,6 +6,8 @@ export declare class UsersService {
     findByEmail(email: string): Promise<UserDocument | null>;
     findByPhone(phone: string): Promise<UserDocument | null>;
     findById(id: string): Promise<UserDocument | null>;
+    findBriefingSubscribers(orgId: string): Promise<UserDocument[]>;
+    setBriefingEmailOptIn(userId: string, enabled: boolean): Promise<boolean>;
     create(userData: Partial<User>): Promise<UserDocument>;
     findOrCreateSocial(userData: {
         email?: string;

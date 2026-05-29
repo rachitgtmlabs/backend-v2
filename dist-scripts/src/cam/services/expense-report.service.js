@@ -61,9 +61,41 @@ let ExpenseReportService = class ExpenseReportService {
         ];
         const rows = await this.model.aggregate(pipeline);
         const total = rows.reduce((s, r) => s + r.total_invoiced, 0);
+        const vendorPipeline = [
+            { $match: { ...match, billId: { $ne: null } } },
+            {
+                $lookup: {
+                    from: 'bills',
+                    localField: 'billId',
+                    foreignField: 'billId',
+                    as: 'bill',
+                    pipeline: [{ $project: { vendor_name: 1 } }],
+                },
+            },
+            { $unwind: { path: '$bill', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: { $ifNull: ['$bill.vendor_name', '(Unknown vendor)'] },
+                    total_invoiced: { $sum: '$invoice_amount' },
+                    invoice_count: { $sum: 1 },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    vendor_name: '$_id',
+                    total_invoiced: 1,
+                    invoice_count: 1,
+                },
+            },
+            { $sort: { total_invoiced: -1 } },
+            { $limit: 10 },
+        ];
+        const top_vendors = await this.model.aggregate(vendorPipeline);
         return {
             total_invoiced: total,
             categories: rows,
+            top_vendors,
             scope: args.unit_id
                 ? { kind: 'unit', unit_id: args.unit_id }
                 : { kind: 'property', property_id: args.property_id },

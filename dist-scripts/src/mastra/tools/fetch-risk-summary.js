@@ -4,6 +4,7 @@ exports.fetchRiskSummaryTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
 const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 exports.fetchRiskSummaryTool = (0, tools_1.createTool)({
     id: 'fetch-risk-summary',
     description: `Returns all unresolved high/critical risks across a portfolio (or a specific property), grouped by property. Use when the user asks "what are my biggest risks?", "what's exposed?", or wants a risk overview.`,
@@ -45,13 +46,32 @@ exports.fetchRiskSummaryTool = (0, tools_1.createTool)({
             .optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, minSeverity, limit } = inputData;
         try {
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let scopedPortfolioIds;
+            if (portfolio_id) {
+                if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                    return (0, rbac_1.noAccess)('risks');
+                }
+                scopedPortfolioIds = [portfolio_id];
+            }
+            else {
+                scopedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (scopedPortfolioIds.length === 0) {
+                    return {
+                        success: true,
+                        risks: [],
+                        countsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+                    };
+                }
+            }
             const db = await (0, mongo_1.getDb)();
-            const filter = { is_resolved: false };
-            if (portfolio_id)
-                filter.portfolio_id = portfolio_id;
+            const filter = {
+                is_resolved: false,
+                portfolio_id: { $in: scopedPortfolioIds },
+            };
             if (property_id)
                 filter.property_id = property_id;
             const [alertsNew, alertsLegacy] = await Promise.all([

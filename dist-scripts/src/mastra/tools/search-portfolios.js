@@ -1,21 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchPortfoliosTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
-const mongoose_1 = __importDefault(require("mongoose"));
-const connectionString = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-let cachedConnection = null;
-async function getConnection() {
-    if (cachedConnection?.connection?.readyState === 1) {
-        return cachedConnection;
-    }
-    cachedConnection = await mongoose_1.default.connect(connectionString);
-    return cachedConnection;
-}
+const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 function normalize(s) {
     return s.toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -91,21 +80,18 @@ Returns ranked matches so you can disambiguate: if several match, ask the user w
         totalPortfoliosScanned: zod_1.z.number().optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const rawQuery = inputData.query.trim();
         const limit = inputData.limit ?? 15;
         if (!rawQuery) {
             return { success: false, error: 'Search query cannot be empty.' };
         }
         try {
-            const conn = await getConnection();
-            const db = conn.connection.db;
-            if (!db) {
-                return { success: false, error: 'Database connection not available' };
-            }
-            const portfoliosCollection = db.collection('portfolios');
-            const rows = await portfoliosCollection
-                .find({})
+            const orgId = (0, rbac_1.getOrgId)(context);
+            const db = await (0, mongo_1.getDb)();
+            const rows = await db
+                .collection('portfolios')
+                .find((0, rbac_1.orgPortfolioFilter)(orgId))
                 .project({
                 portfolioId: 1,
                 name: 1,

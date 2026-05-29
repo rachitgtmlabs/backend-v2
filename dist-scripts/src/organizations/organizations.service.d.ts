@@ -5,4 +5,5 @@ export declare class OrganizationsService {
     constructor(orgModel: Model<OrganizationDocument>);
     resolveForEmail(emailRaw: string): Promise<OrganizationDocument>;
     findByOrgId(orgId: string): Promise<OrganizationDocument | null>;
+    listAll(): Promise<OrganizationDocument[]>;
 }

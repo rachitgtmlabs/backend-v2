@@ -17,6 +17,7 @@ exports.ReconciliationService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
+const lease_schema_1 = require("../../lease/schemas/lease.schema");
 const unit_schema_1 = require("../../unit/schemas/unit.schema");
 const engine_1 = require("../engine");
 const bill_schema_1 = require("../schemas/bill.schema");
@@ -24,11 +25,12 @@ const reconciliation_run_schema_1 = require("../schemas/reconciliation-run.schem
 const tenant_invoice_schema_1 = require("../schemas/tenant-invoice.schema");
 const ids_1 = require("../utils/ids");
 let ReconciliationService = ReconciliationService_1 = class ReconciliationService {
-    constructor(billModel, unitModel, invoiceModel, runModel) {
+    constructor(billModel, unitModel, invoiceModel, runModel, leaseModel) {
         this.billModel = billModel;
         this.unitModel = unitModel;
         this.invoiceModel = invoiceModel;
         this.runModel = runModel;
+        this.leaseModel = leaseModel;
         this.logger = new common_1.Logger(ReconciliationService_1.name);
     }
     async run(args) {
@@ -76,10 +78,11 @@ let ReconciliationService = ReconciliationService_1 = class ReconciliationServic
             calendar_year,
             service_period_start: b.service_period_start ?? b.invoice_date ?? null,
         }));
+        const tenantsByUnitId = await this.resolveTenantNamesForUnits(unitDocs.map((u) => u.unitId));
         const units = unitDocs.map((u) => ({
             unit_id: u.unitId,
             unit_code: u.unit_code ?? null,
-            tenant_name: null,
+            tenant_name: tenantsByUnitId.get(u.unitId) ?? null,
             occupancy_status: (u.occupancy_status ?? 'occupied'),
             cam_allocation: u.cam_allocation
                 ? {
@@ -102,8 +105,34 @@ let ReconciliationService = ReconciliationService_1 = class ReconciliationServic
             threshold_after: i.threshold_after ?? null,
         }));
         const diff = (0, engine_1.diffInvoiceSets)(canonical.invoices, actualLite);
-        const now = new Date();
+        const billById = new Map(billsThisYear.map((b) => [b.billId, b]));
         const unitCodeByUnit = new Map(unitDocs.map((u) => [u.unitId, u.unit_code]));
+        const tenantNameByUnit = tenantsByUnitId;
+        let invoicesAdded = 0;
+        let invoicesModified = 0;
+        let invoicesRemoved = 0;
+        for (const u of diff.by_unit) {
+            u.unit_code = unitCodeByUnit.get(u.unit_id) ?? null;
+            u.tenant_name = tenantNameByUnit.get(u.unit_id) ?? null;
+            for (const l of u.lines) {
+                const bill = billById.get(l.billId);
+                l.vendor_name = bill?.vendor_name ?? null;
+                l.expense_category = bill?.expense_category ?? null;
+                l.period_label = formatPeriodLabel(bill?.service_period_start ?? bill?.invoice_date ?? null);
+                if (l.status === 'added')
+                    invoicesAdded += 1;
+                else if (l.status === 'removed')
+                    invoicesRemoved += 1;
+                else if (l.status === 'modified')
+                    invoicesModified += 1;
+            }
+        }
+        diff.bills_replayed = bills.length;
+        diff.canonical_invoices_count = canonical.invoices.length;
+        diff.invoices_added = invoicesAdded;
+        diff.invoices_modified = invoicesModified;
+        diff.invoices_removed = invoicesRemoved;
+        const now = new Date();
         const adjustmentInvoiceIdsByUnit = new Map();
         if (apply) {
             for (const u of diff.by_unit) {
@@ -131,7 +160,7 @@ let ReconciliationService = ReconciliationService_1 = class ReconciliationServic
                     property_id,
                     portfolio_id,
                     unit_code: unitCodeByUnit.get(u.unit_id) ?? null,
-                    tenant_name: null,
+                    tenant_name: tenantsByUnitId.get(u.unit_id) ?? null,
                     bill_amount: null,
                     share_pct: null,
                     base_amount_at_time: null,
@@ -175,7 +204,7 @@ let ReconciliationService = ReconciliationService_1 = class ReconciliationServic
             by_unit: diff.by_unit.map((u) => ({
                 unit_id: u.unit_id,
                 unit_code: unitCodeByUnit.get(u.unit_id) ?? null,
-                tenant_name: null,
+                tenant_name: tenantsByUnitId.get(u.unit_id) ?? null,
                 actual_invoiced_total: u.actual_invoiced_total,
                 canonical_invoiced_total: u.canonical_invoiced_total,
                 delta: u.delta,
@@ -216,6 +245,31 @@ let ReconciliationService = ReconciliationService_1 = class ReconciliationServic
             throw new common_1.NotFoundException(`Reconciliation run ${runId} not found`);
         return doc;
     }
+    async resolveTenantNamesForUnits(unitIds) {
+        const result = new Map();
+        if (unitIds.length === 0)
+            return result;
+        const leases = await this.leaseModel
+            .find({
+            unit_id: { $in: [...unitIds] },
+            status: 'processed',
+        })
+            .sort({ updatedAt: -1 })
+            .select({ unit_id: 1, lease_information: 1 })
+            .lean();
+        for (const l of leases) {
+            if (!l.unit_id || result.has(l.unit_id))
+                continue;
+            const inner = l.lease_information
+                ?.leaseInformation;
+            const name = (typeof inner?.leaseTo?.value === 'string' && inner.leaseTo.value.trim()) ||
+                (typeof inner?.tenant?.value === 'string' && inner.tenant.value.trim()) ||
+                null;
+            if (name)
+                result.set(l.unit_id, name);
+        }
+        return result;
+    }
 };
 exports.ReconciliationService = ReconciliationService;
 exports.ReconciliationService = ReconciliationService = ReconciliationService_1 = __decorate([
@@ -224,9 +278,18 @@ exports.ReconciliationService = ReconciliationService = ReconciliationService_1 
     __param(1, (0, mongoose_1.InjectModel)(unit_schema_1.Unit.name)),
     __param(2, (0, mongoose_1.InjectModel)(tenant_invoice_schema_1.TenantInvoice.name)),
     __param(3, (0, mongoose_1.InjectModel)(reconciliation_run_schema_1.ReconciliationRun.name)),
+    __param(4, (0, mongoose_1.InjectModel)(lease_schema_1.Lease.name)),
     __metadata("design:paramtypes", [mongoose_2.Model,
+        mongoose_2.Model,
         mongoose_2.Model,
         mongoose_2.Model,
         mongoose_2.Model])
 ], ReconciliationService);
+function formatPeriodLabel(d) {
+    if (!d)
+        return null;
+    const month = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const year = d.getUTCFullYear();
+    return `${month} ${year}`;
+}
 //# sourceMappingURL=reconciliation.service.js.map

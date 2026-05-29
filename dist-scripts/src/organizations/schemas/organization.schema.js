@@ -30,6 +30,10 @@ __decorate([
     (0, mongoose_1.Prop)({ required: true, default: 'domain' }),
     __metadata("design:type", String)
 ], Organization.prototype, "kind", void 0);
+__decorate([
+    (0, mongoose_1.Prop)({ required: true, default: 'America/New_York' }),
+    __metadata("design:type", String)
+], Organization.prototype, "timezone", void 0);
 exports.Organization = Organization = __decorate([
     (0, mongoose_1.Schema)({ collection: 'organizations', timestamps: true })
 ], Organization);

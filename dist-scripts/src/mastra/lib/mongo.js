@@ -9,13 +9,15 @@ exports.getDb = getDb;
 exports.deepMerge = deepMerge;
 exports.severityRank = severityRank;
 const mongoose_1 = __importDefault(require("mongoose"));
-const connectionString = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
 let cachedConnection = null;
+function resolveConnectionString() {
+    return (process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq');
+}
 async function getConnection() {
     if (cachedConnection?.connection?.readyState === 1) {
         return cachedConnection;
     }
-    cachedConnection = await mongoose_1.default.connect(connectionString);
+    cachedConnection = await mongoose_1.default.connect(resolveConnectionString());
     return cachedConnection;
 }
 async function getDb() {

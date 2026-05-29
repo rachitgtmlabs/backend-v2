@@ -24,4 +24,31 @@ export class DashboardController {
   ) {
     return this.dashboardService.getDashboardAnalytics(portfolioId, orgId);
   }
+
+  /**
+   * CAM Recoveries tab. Same RBAC contract as `/analytics` (global JWT guard
+   * → org-scoped service filter → PortfolioAccessGuard rejects cross-org
+   * portfolio_id). Returns billed/billable/recoverable/outstanding KPIs plus
+   * per-property and per-category breakdowns.
+   */
+  @Get('cam')
+  async getCamDashboard(
+    @CurrentOrgId() orgId: string | undefined,
+    @Query('portfolio_id') portfolioId?: string,
+  ) {
+    return this.dashboardService.getDashboardCam(portfolioId, orgId);
+  }
+
+  /**
+   * Operational Overview tab. Bundles biggest-risk + attention KPIs + open
+   * tasks + invoice-vs-payment trend into a single round-trip. Same RBAC
+   * contract as the other dashboard endpoints.
+   */
+  @Get('overview')
+  async getOverviewDashboard(
+    @CurrentOrgId() orgId: string | undefined,
+    @Query('portfolio_id') portfolioId?: string,
+  ) {
+    return this.dashboardService.getDashboardOverview(portfolioId, orgId);
+  }
 }

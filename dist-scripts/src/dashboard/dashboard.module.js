@@ -12,7 +12,11 @@ const mongoose_1 = require("@nestjs/mongoose");
 const property_schema_1 = require("../property/schemas/property.schema");
 const lease_schema_1 = require("../lease/schemas/lease.schema");
 const task_alert_schema_1 = require("../tasks-alerts/schemas/task-alert.schema");
+const property_alert_schema_1 = require("../tasks-alerts/schemas/property-alert.schema");
 const portfolio_schema_1 = require("../portfolio/schemas/portfolio.schema");
+const unit_schema_1 = require("../unit/schemas/unit.schema");
+const tenant_invoice_schema_1 = require("../cam/schemas/tenant-invoice.schema");
+const reconciliation_run_schema_1 = require("../cam/schemas/reconciliation-run.schema");
 const portfolio_module_1 = require("../portfolio/portfolio.module");
 const dashboard_controller_1 = require("./dashboard.controller");
 const dashboard_service_1 = require("./dashboard.service");
@@ -26,12 +30,17 @@ exports.DashboardModule = DashboardModule = __decorate([
                 { name: property_schema_1.Property.name, schema: property_schema_1.PropertySchema },
                 { name: lease_schema_1.Lease.name, schema: lease_schema_1.LeaseSchema },
                 { name: task_alert_schema_1.TaskAlert.name, schema: task_alert_schema_1.TaskAlertSchema },
+                { name: property_alert_schema_1.PropertyAlert.name, schema: property_alert_schema_1.PropertyAlertSchema },
                 { name: portfolio_schema_1.Portfolio.name, schema: portfolio_schema_1.PortfolioSchema },
+                { name: unit_schema_1.Unit.name, schema: unit_schema_1.UnitSchema },
+                { name: tenant_invoice_schema_1.TenantInvoice.name, schema: tenant_invoice_schema_1.TenantInvoiceSchema },
+                { name: reconciliation_run_schema_1.ReconciliationRun.name, schema: reconciliation_run_schema_1.ReconciliationRunSchema },
             ]),
             portfolio_module_1.PortfolioModule,
         ],
         controllers: [dashboard_controller_1.DashboardController],
         providers: [dashboard_service_1.DashboardService],
+        exports: [dashboard_service_1.DashboardService],
     })
 ], DashboardModule);
 //# sourceMappingURL=dashboard.module.js.map

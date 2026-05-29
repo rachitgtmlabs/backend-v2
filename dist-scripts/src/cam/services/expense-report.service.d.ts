@@ -13,6 +13,7 @@ export declare class ExpenseReportService {
     }): Promise<{
         total_invoiced: any;
         categories: any[];
+        top_vendors: any[];
         scope: {
             kind: string;
             unit_id: string;

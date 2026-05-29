@@ -1,24 +1,24 @@
 import { z } from 'zod';
-export declare const TOOL_NAMES: readonly ["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-lease-clauses", "fetch-reminders"];
-export declare const toolNameEnum: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-lease-clauses", "fetch-reminders"]>;
+export declare const TOOL_NAMES: readonly ["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-cam-rules", "fetch-cam-reconciliation", "fetch-lease-clauses", "fetch-reminders"];
+export declare const toolNameEnum: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-cam-rules", "fetch-cam-reconciliation", "fetch-lease-clauses", "fetch-reminders"]>;
 export type ToolName = z.infer<typeof toolNameEnum>;
 export declare const taskNodeSchema: z.ZodObject<{
     id: z.ZodString;
-    toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-lease-clauses", "fetch-reminders"]>;
+    toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-cam-rules", "fetch-cam-reconciliation", "fetch-lease-clauses", "fetch-reminders"]>;
     inputs: z.ZodString;
     dependsOn: z.ZodArray<z.ZodString, "many">;
     isDynamic: z.ZodBoolean;
     taskTitle: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     id: string;
-    toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+    toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
     inputs: string;
     dependsOn: string[];
     isDynamic: boolean;
     taskTitle: string;
 }, {
     id: string;
-    toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+    toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
     inputs: string;
     dependsOn: string[];
     isDynamic: boolean;
@@ -32,13 +32,13 @@ export declare const taskResultSchema: z.ZodObject<{
     output: z.ZodUnknown;
     error: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "completed" | "failed" | "skipped";
+    status: "skipped" | "failed" | "completed";
     toolName: string;
     taskId: string;
     error?: string | undefined;
     output?: unknown;
 }, {
-    status: "completed" | "failed" | "skipped";
+    status: "skipped" | "failed" | "completed";
     toolName: string;
     taskId: string;
     error?: string | undefined;
@@ -111,13 +111,13 @@ export declare const dagStateSchema: z.ZodObject<{
         output: z.ZodUnknown;
         error: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        status: "completed" | "failed" | "skipped";
+        status: "skipped" | "failed" | "completed";
         toolName: string;
         taskId: string;
         error?: string | undefined;
         output?: unknown;
     }, {
-        status: "completed" | "failed" | "skipped";
+        status: "skipped" | "failed" | "completed";
         toolName: string;
         taskId: string;
         error?: string | undefined;
@@ -128,21 +128,21 @@ export declare const dagStateSchema: z.ZodObject<{
     artifactType: z.ZodOptional<z.ZodEnum<["text", "table", "timeline", "chart"]>>;
     taskGraph: z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
-        toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-lease-clauses", "fetch-reminders"]>;
+        toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-cam-rules", "fetch-cam-reconciliation", "fetch-lease-clauses", "fetch-reminders"]>;
         inputs: z.ZodString;
         dependsOn: z.ZodArray<z.ZodString, "many">;
         isDynamic: z.ZodBoolean;
         taskTitle: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
         taskTitle: string;
     }, {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
@@ -166,7 +166,7 @@ export declare const dagStateSchema: z.ZodObject<{
     iteration: number;
     toolsUsed: string[];
     completedTasks: {
-        status: "completed" | "failed" | "skipped";
+        status: "skipped" | "failed" | "completed";
         toolName: string;
         taskId: string;
         error?: string | undefined;
@@ -178,7 +178,7 @@ export declare const dagStateSchema: z.ZodObject<{
     artifactType?: "text" | "timeline" | "table" | "chart" | undefined;
     taskGraph?: {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
@@ -197,7 +197,7 @@ export declare const dagStateSchema: z.ZodObject<{
     iteration: number;
     toolsUsed: string[];
     completedTasks: {
-        status: "completed" | "failed" | "skipped";
+        status: "skipped" | "failed" | "completed";
         toolName: string;
         taskId: string;
         error?: string | undefined;
@@ -212,7 +212,7 @@ export declare const dagStateSchema: z.ZodObject<{
     artifactType?: "text" | "timeline" | "table" | "chart" | undefined;
     taskGraph?: {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
@@ -228,21 +228,21 @@ export declare const orchestratorOutputSchema: z.ZodObject<{
     artifactType: z.ZodNullable<z.ZodEnum<["text", "table", "timeline", "chart"]>>;
     taskGraph: z.ZodNullable<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
-        toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-lease-clauses", "fetch-reminders"]>;
+        toolName: z.ZodEnum<["search-portfolios", "search-properties", "list-portfolios", "fetch-lease-document", "fetch-tasks-alerts", "fetch-portfolio-overview", "fetch-property-details", "fetch-lease-evolution", "fetch-amendment-history", "fetch-risk-summary", "fetch-open-tasks", "fetch-expiring-leases", "fetch-cam-data", "fetch-cam-rules", "fetch-cam-reconciliation", "fetch-lease-clauses", "fetch-reminders"]>;
         inputs: z.ZodString;
         dependsOn: z.ZodArray<z.ZodString, "many">;
         isDynamic: z.ZodBoolean;
         taskTitle: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
         taskTitle: string;
     }, {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
@@ -254,7 +254,7 @@ export declare const orchestratorOutputSchema: z.ZodObject<{
     artifactType: "text" | "timeline" | "table" | "chart" | null;
     taskGraph: {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;
@@ -267,7 +267,7 @@ export declare const orchestratorOutputSchema: z.ZodObject<{
     artifactType: "text" | "timeline" | "table" | "chart" | null;
     taskGraph: {
         id: string;
-        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-lease-clauses" | "fetch-reminders";
+        toolName: "fetch-lease-document" | "fetch-tasks-alerts" | "list-portfolios" | "search-portfolios" | "search-properties" | "fetch-portfolio-overview" | "fetch-property-details" | "fetch-lease-evolution" | "fetch-amendment-history" | "fetch-risk-summary" | "fetch-open-tasks" | "fetch-expiring-leases" | "fetch-cam-data" | "fetch-cam-rules" | "fetch-cam-reconciliation" | "fetch-lease-clauses" | "fetch-reminders";
         inputs: string;
         dependsOn: string[];
         isDynamic: boolean;

@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.answeringAgent = void 0;
 const agent_1 = require("@mastra/core/agent");
-const groqModelId = process.env.GROQ_MODEL?.trim().replace(/^groq\//, '') ??
-    'openai/gpt-oss-120b';
+const chatModel = process.env.CHAT_MODEL?.trim() ?? 'openai/gpt-4o-mini';
 exports.answeringAgent = new agent_1.Agent({
     id: 'lease-answering-agent',
     name: 'Lease Answering Agent',
@@ -37,6 +36,6 @@ You must NEVER write generic placeholder names like "Portfolio A", "Property B",
 - If needsUserClarification is set but no tool returned candidates (the orchestrator was unsure how to start), ask the user a plain clarifying question instead — do NOT list placeholder options.
 
 Respond ONLY with the structured JSON object.`,
-    model: `groq/${groqModelId}`,
+    model: chatModel,
 });
 //# sourceMappingURL=answering-agent.js.map

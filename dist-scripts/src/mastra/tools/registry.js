@@ -14,6 +14,8 @@ const fetch_risk_summary_1 = require("./fetch-risk-summary");
 const fetch_open_tasks_1 = require("./fetch-open-tasks");
 const fetch_expiring_leases_1 = require("./fetch-expiring-leases");
 const fetch_cam_data_1 = require("./fetch-cam-data");
+const fetch_cam_rules_1 = require("./fetch-cam-rules");
+const fetch_cam_reconciliation_1 = require("./fetch-cam-reconciliation");
 const fetch_lease_clauses_1 = require("./fetch-lease-clauses");
 const fetch_reminders_1 = require("./fetch-reminders");
 exports.TOOL_REGISTRY = {
@@ -30,6 +32,8 @@ exports.TOOL_REGISTRY = {
     'fetch-open-tasks': fetch_open_tasks_1.fetchOpenTasksTool,
     'fetch-expiring-leases': fetch_expiring_leases_1.fetchExpiringLeasesTool,
     'fetch-cam-data': fetch_cam_data_1.fetchCamDataTool,
+    'fetch-cam-rules': fetch_cam_rules_1.fetchCamRulesTool,
+    'fetch-cam-reconciliation': fetch_cam_reconciliation_1.fetchCamReconciliationTool,
     'fetch-lease-clauses': fetch_lease_clauses_1.fetchLeaseClausesTool,
     'fetch-reminders': fetch_reminders_1.fetchRemindersTool,
 };
@@ -108,8 +112,20 @@ exports.TOOL_DIRECTORY = [
     },
     {
         name: 'fetch-cam-data',
-        when: 'CAM/operating-expense clauses for one lease + CAM-tagged alerts. NOTE: billed-vs-entitled reconciliation is not yet available.',
+        when: 'CAM/operating-expense clauses for one lease + CAM-tagged alerts.',
         inputs: '{ portfolio_id, property_id, lease_id? }',
+        isDynamic: false,
+    },
+    {
+        name: 'fetch-cam-rules',
+        when: "Portfolio's reusable CAM rule templates (rule_code, share %, base year, exclusions).",
+        inputs: '{ portfolio_id, rule_code?, query?, limit? }',
+        isDynamic: false,
+    },
+    {
+        name: 'fetch-cam-reconciliation',
+        when: "Audit-reconciliation history ('Reconcile YYYY' runs): per-unit deltas, preview vs applied, adjustments_created.",
+        inputs: '{ portfolio_id, property_id?, runId?, calendar_year?, mode?, unit_id?, limit? }',
         isDynamic: false,
     },
     {

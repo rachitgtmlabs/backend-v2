@@ -5,7 +5,7 @@ export declare class UnitController {
     private readonly unitService;
     constructor(unitService: UnitService);
     list(portfolioId: string | undefined, propertyId: string | undefined): Promise<{
-        units: import("./unit.service").UnitPayload[];
+        units: import("./unit.service").UnitWithLeaseSummaryPayload[];
     }>;
     match(portfolioId: string | undefined, propertyId: string | undefined, hint: string | undefined): Promise<{
         matched: boolean;

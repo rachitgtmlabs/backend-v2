@@ -1,9 +1,13 @@
 import { Model } from 'mongoose';
+import { LeaseDocumentModel } from '../../lease/schemas/lease.schema';
 import { CreateReminderDto, RecordPaymentDto } from '../dto/invoice-actions.dto';
+import { BillDocumentModel } from '../schemas/bill.schema';
 import { TenantInvoiceDocumentModel, TenantInvoiceKind, VarianceTag } from '../schemas/tenant-invoice.schema';
 export declare class TenantInvoicesService {
     private readonly model;
-    constructor(model: Model<TenantInvoiceDocumentModel>);
+    private readonly billModel;
+    private readonly leaseModel;
+    constructor(model: Model<TenantInvoiceDocumentModel>, billModel: Model<BillDocumentModel>, leaseModel: Model<LeaseDocumentModel>);
     list(filter: {
         portfolio_id: string;
         property_id?: string;
@@ -17,6 +21,7 @@ export declare class TenantInvoicesService {
         limit?: number;
     }): Promise<Record<string, any>[]>;
     getOne(portfolioId: string, invoiceId: string): Promise<Record<string, any>>;
+    private hydrateWithBills;
     recordPayment(invoiceId: string, dto: RecordPaymentDto, actorFromCtx?: string): Promise<Record<string, any>>;
     addReminder(invoiceId: string, dto: CreateReminderDto): Promise<Record<string, any>>;
     deleteReminder(invoiceId: string, reminderId: string, portfolioId: string, userId: string): Promise<{

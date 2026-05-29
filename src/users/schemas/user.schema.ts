@@ -31,6 +31,11 @@ export class User {
   // user, after which this can be flipped to required: true.
   @Prop({ index: true })
   organization_id?: string;
+
+  // When true, this user receives the org's daily briefing by email after each
+  // overnight run. Opt-in via the dashboard's "Email me this daily" button.
+  @Prop({ default: false })
+  briefingEmailOptIn: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

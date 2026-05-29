@@ -1,4 +1,5 @@
 import { Model } from 'mongoose';
+import { LeaseDocumentModel } from '../../lease/schemas/lease.schema';
 import { UnitDocumentModel } from '../../unit/schemas/unit.schema';
 import { applyBillToUnit, type GenerateResult, type InvoiceResult } from '../engine';
 import { BillDocumentModel } from '../schemas/bill.schema';
@@ -9,8 +10,9 @@ export declare class InvoiceGenerationService {
     private readonly unitModel;
     private readonly invoiceModel;
     private readonly thresholdModel;
+    private readonly leaseModel;
     private readonly logger;
-    constructor(billModel: Model<BillDocumentModel>, unitModel: Model<UnitDocumentModel>, invoiceModel: Model<TenantInvoiceDocumentModel>, thresholdModel: Model<UnitThresholdDocumentModel>);
+    constructor(billModel: Model<BillDocumentModel>, unitModel: Model<UnitDocumentModel>, invoiceModel: Model<TenantInvoiceDocumentModel>, thresholdModel: Model<UnitThresholdDocumentModel>, leaseModel: Model<LeaseDocumentModel>);
     preview(args: {
         portfolio_id: string;
         property_id: string;
@@ -32,6 +34,7 @@ export declare class InvoiceGenerationService {
         stats: GenerateResult['stats'];
     }>;
     private loadInputs;
+    private resolveTenantNamesForUnits;
     private markBillsCommitted;
     private toPreviewInvoice;
     private computeThresholdDeltas;

@@ -27,6 +27,12 @@ let DashboardController = class DashboardController {
     async getAnalyticsDashboard(orgId, portfolioId) {
         return this.dashboardService.getDashboardAnalytics(portfolioId, orgId);
     }
+    async getCamDashboard(orgId, portfolioId) {
+        return this.dashboardService.getDashboardCam(portfolioId, orgId);
+    }
+    async getOverviewDashboard(orgId, portfolioId) {
+        return this.dashboardService.getDashboardOverview(portfolioId, orgId);
+    }
 };
 exports.DashboardController = DashboardController;
 __decorate([
@@ -46,6 +52,22 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], DashboardController.prototype, "getAnalyticsDashboard", null);
+__decorate([
+    (0, common_1.Get)('cam'),
+    __param(0, (0, current_user_decorator_1.CurrentOrgId)()),
+    __param(1, (0, common_1.Query)('portfolio_id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], DashboardController.prototype, "getCamDashboard", null);
+__decorate([
+    (0, common_1.Get)('overview'),
+    __param(0, (0, current_user_decorator_1.CurrentOrgId)()),
+    __param(1, (0, common_1.Query)('portfolio_id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], DashboardController.prototype, "getOverviewDashboard", null);
 exports.DashboardController = DashboardController = __decorate([
     (0, common_1.Controller)('dashboard'),
     (0, common_1.UseGuards)(portfolio_access_guard_1.PortfolioAccessGuard),

@@ -44,6 +44,11 @@ function diffInvoiceSets(canonical, actual) {
             }
         }
         if (Math.abs(delta) > EPSILON) {
+            const status = actualAmount === 0
+                ? 'added'
+                : can.invoice_amount === 0
+                    ? 'removed'
+                    : 'modified';
             u.lines.push({
                 billId: can.billId,
                 unit_id: can.unit_id,
@@ -51,6 +56,7 @@ function diffInvoiceSets(canonical, actual) {
                 original_invoiced_amount: actualAmount,
                 canonical_invoiced_amount: can.invoice_amount,
                 delta,
+                status,
                 reason: act
                     ? `Recalculation differs by ${formatDelta(delta)}`
                     : `Bill missing from ledger — canonical would have invoiced ${formatDelta(can.invoice_amount)}`,
@@ -69,6 +75,7 @@ function diffInvoiceSets(canonical, actual) {
                 original_invoiced_amount: act.invoice_amount,
                 canonical_invoiced_amount: 0,
                 delta,
+                status: 'removed',
                 reason: `Ledger has invoice with no matching bill in canonical replay`,
             });
         }

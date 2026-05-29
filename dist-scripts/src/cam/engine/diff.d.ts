@@ -7,6 +7,10 @@ export interface InvoiceLineDiff {
     canonical_invoiced_amount: number;
     delta: number;
     reason: string;
+    status?: 'added' | 'removed' | 'modified';
+    vendor_name?: string | null;
+    expense_category?: string | null;
+    period_label?: string | null;
 }
 export interface UnitDiff {
     unit_id: string;
@@ -16,12 +20,19 @@ export interface UnitDiff {
     actual_threshold_eoy: number;
     canonical_threshold_eoy: number;
     lines: InvoiceLineDiff[];
+    unit_code?: string | null;
+    tenant_name?: string | null;
 }
 export interface ReconDiff {
     total_delta: number;
     units_with_discrepancies: number;
     bills_affected: number;
     by_unit: UnitDiff[];
+    bills_replayed?: number;
+    canonical_invoices_count?: number;
+    invoices_added?: number;
+    invoices_modified?: number;
+    invoices_removed?: number;
 }
 export interface CommittedInvoiceLite {
     invoiceId: string;

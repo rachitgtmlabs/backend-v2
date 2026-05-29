@@ -1,21 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchTasksAlertsTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
-const mongoose_1 = __importDefault(require("mongoose"));
-const connectionString = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-let cachedConnection = null;
-async function getConnection() {
-    if (cachedConnection?.connection?.readyState === 1) {
-        return cachedConnection;
-    }
-    cachedConnection = await mongoose_1.default.connect(connectionString);
-    return cachedConnection;
-}
+const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low'];
 function severityRank(severity) {
     const i = SEVERITY_ORDER.indexOf(severity);
@@ -89,14 +78,14 @@ Use when the user asks what to focus on today, about their tasks, to-dos, alerts
         alerts: zod_1.z.array(zod_1.z.record(zod_1.z.unknown())).optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { portfolio_id, property_id, lease_id: leaseIdInput } = inputData;
         try {
-            const conn = await getConnection();
-            const db = conn.connection.db;
-            if (!db) {
-                return { success: false, error: 'Database connection not available' };
+            const orgId = (0, rbac_1.getOrgId)(context);
+            if (!(await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId))) {
+                return (0, rbac_1.noAccess)('tasks/alerts');
             }
+            const db = await (0, mongo_1.getDb)();
             const leasesCollection = db.collection('leases');
             const propertyAlertsColl = db.collection('property_alerts');
             const taskAlertsColl = db.collection('property_task_alerts');

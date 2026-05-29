@@ -17,6 +17,7 @@ exports.InvoiceGenerationService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
+const lease_schema_1 = require("../../lease/schemas/lease.schema");
 const unit_schema_1 = require("../../unit/schemas/unit.schema");
 const engine_1 = require("../engine");
 const bill_schema_1 = require("../schemas/bill.schema");
@@ -24,11 +25,12 @@ const tenant_invoice_schema_1 = require("../schemas/tenant-invoice.schema");
 const unit_threshold_schema_1 = require("../schemas/unit-threshold.schema");
 const ids_1 = require("../utils/ids");
 let InvoiceGenerationService = InvoiceGenerationService_1 = class InvoiceGenerationService {
-    constructor(billModel, unitModel, invoiceModel, thresholdModel) {
+    constructor(billModel, unitModel, invoiceModel, thresholdModel, leaseModel) {
         this.billModel = billModel;
         this.unitModel = unitModel;
         this.invoiceModel = invoiceModel;
         this.thresholdModel = thresholdModel;
+        this.leaseModel = leaseModel;
         this.logger = new common_1.Logger(InvoiceGenerationService_1.name);
         this.applyBillToUnitDebug = engine_1.applyBillToUnit;
     }
@@ -204,10 +206,11 @@ let InvoiceGenerationService = InvoiceGenerationService_1 = class InvoiceGenerat
                 return 1;
             return a.billId < b.billId ? -1 : 1;
         });
+        const tenantNameByUnit = await this.resolveTenantNamesForUnits(unitDocs.map((u) => u.unitId));
         const units = unitDocs.map((u) => ({
             unit_id: u.unitId,
             unit_code: u.unit_code ?? null,
-            tenant_name: null,
+            tenant_name: tenantNameByUnit.get(u.unitId) ?? null,
             occupancy_status: (u.occupancy_status ?? 'occupied'),
             cam_allocation: u.cam_allocation
                 ? {
@@ -233,6 +236,31 @@ let InvoiceGenerationService = InvoiceGenerationService_1 = class InvoiceGenerat
             thresholdsByKey.set(`${t.unit_id}-${t.calendar_year}`, t.threshold_amount);
         }
         return { bills, units, thresholdsByKey };
+    }
+    async resolveTenantNamesForUnits(unitIds) {
+        const result = new Map();
+        if (unitIds.length === 0)
+            return result;
+        const leases = await this.leaseModel
+            .find({
+            unit_id: { $in: [...unitIds] },
+            status: 'processed',
+        })
+            .sort({ updatedAt: -1 })
+            .select({ unit_id: 1, lease_information: 1 })
+            .lean();
+        for (const l of leases) {
+            if (!l.unit_id || result.has(l.unit_id))
+                continue;
+            const inner = l.lease_information
+                ?.leaseInformation;
+            const name = (typeof inner?.leaseTo?.value === 'string' && inner.leaseTo.value.trim()) ||
+                (typeof inner?.tenant?.value === 'string' && inner.tenant.value.trim()) ||
+                null;
+            if (name)
+                result.set(l.unit_id, name);
+        }
+        return result;
     }
     async markBillsCommitted(portfolioId, billIds) {
         if (billIds.length === 0)
@@ -300,7 +328,9 @@ exports.InvoiceGenerationService = InvoiceGenerationService = InvoiceGenerationS
     __param(1, (0, mongoose_1.InjectModel)(unit_schema_1.Unit.name)),
     __param(2, (0, mongoose_1.InjectModel)(tenant_invoice_schema_1.TenantInvoice.name)),
     __param(3, (0, mongoose_1.InjectModel)(unit_threshold_schema_1.UnitThreshold.name)),
+    __param(4, (0, mongoose_1.InjectModel)(lease_schema_1.Lease.name)),
     __metadata("design:paramtypes", [mongoose_2.Model,
+        mongoose_2.Model,
         mongoose_2.Model,
         mongoose_2.Model,
         mongoose_2.Model])

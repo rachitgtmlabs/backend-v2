@@ -46,6 +46,10 @@ __decorate([
     (0, mongoose_1.Prop)({ index: true }),
     __metadata("design:type", String)
 ], User.prototype, "organization_id", void 0);
+__decorate([
+    (0, mongoose_1.Prop)({ default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "briefingEmailOptIn", void 0);
 exports.User = User = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], User);

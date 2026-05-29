@@ -1,4 +1,5 @@
 import { Model } from 'mongoose';
+import { LeaseDocumentModel } from '../lease/schemas/lease.schema';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -7,15 +8,16 @@ import { UnitDocumentModel } from './schemas/unit.schema';
 export type UnitPayload = ReturnType<UnitService['toUnitPayload']>;
 export declare class UnitService {
     private unitModel;
+    private leaseModel;
     private readonly portfolioService;
     private readonly propertyService;
     private readonly logger;
-    constructor(unitModel: Model<UnitDocumentModel>, portfolioService: PortfolioService, propertyService: PropertyService);
+    constructor(unitModel: Model<UnitDocumentModel>, leaseModel: Model<LeaseDocumentModel>, portfolioService: PortfolioService, propertyService: PropertyService);
     create(dto: CreateUnitDto): Promise<{
         unit: UnitPayload;
     }>;
     listByProperty(portfolioId: string, propertyId: string): Promise<{
-        units: UnitPayload[];
+        units: UnitWithLeaseSummaryPayload[];
     }>;
     getOne(portfolioId: string, unitId: string): Promise<{
         unit: UnitPayload;
@@ -53,6 +55,17 @@ export declare class UnitService {
         parking_count: number | null;
         status: import("./schemas/unit.schema").UnitStatus;
         notes: string | null;
+        occupancy_status: import("./schemas/unit.schema").UnitOccupancyStatus;
+        cam_allocation: {
+            base_amount: number;
+            base_year: number;
+            share_pct: number;
+            exclusions: string[];
+            admin_fee_pct: number | null;
+            rule_ids: string[];
+            rule_name: string;
+            source: import("./schemas/unit.schema").CamRuleSource;
+        } | null;
         is_default_migrated: boolean;
         audit: {
             created_at: string;
@@ -65,3 +78,11 @@ export declare class UnitService {
     private ensurePortfolioPropertyPair;
     private findInPortfolioOrThrow;
 }
+export interface UnitLeaseSummaryFields {
+    current_lease_id: string | null;
+    tenant_name: string | null;
+    base_rent_annual: number | null;
+    rent_per_sqft: number | null;
+    lease_end: string | null;
+}
+export type UnitWithLeaseSummaryPayload = UnitPayload & UnitLeaseSummaryFields;

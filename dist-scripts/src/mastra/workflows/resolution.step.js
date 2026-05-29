@@ -2,8 +2,19 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolutionStep = void 0;
 const workflows_1 = require("@mastra/core/workflows");
+const common_1 = require("@nestjs/common");
 const schemas_1 = require("./schemas");
 const registry_1 = require("../tools/registry");
+const logger = new common_1.Logger('LeaseChatResolution');
+async function emit(writer, event) {
+    if (!writer)
+        return;
+    try {
+        await writer.write(event);
+    }
+    catch {
+    }
+}
 function groupByLevel(tasks) {
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const indegree = new Map();
@@ -108,9 +119,10 @@ function parseInputs(raw) {
         return {};
     }
 }
-async function executeOne(task, outputs) {
+async function executeOne(task, outputs, toolExecCtx, writer) {
     const tool = registry_1.TOOL_REGISTRY[task.toolName];
     if (!tool) {
+        logger.warn(`[tool] unknown name=${task.toolName} task=${task.id}`);
         return {
             taskId: task.id,
             toolName: task.toolName,
@@ -119,10 +131,26 @@ async function executeOne(task, outputs) {
             error: `Unknown tool: ${task.toolName}`,
         };
     }
+    await emit(writer, {
+        type: 'tool_started',
+        taskId: task.id,
+        toolName: task.toolName,
+        taskTitle: task.taskTitle,
+    });
+    const t0 = Date.now();
     try {
         const rawInputs = parseInputs(task.inputs);
         const inputs = resolveInputs(rawInputs, outputs);
-        const output = await tool.execute(inputs);
+        const output = await tool.execute(inputs, toolExecCtx);
+        const durationMs = Date.now() - t0;
+        logger.log(`[tool] name=${task.toolName} task=${task.id} status=ok duration=${durationMs}ms`);
+        await emit(writer, {
+            type: 'tool_completed',
+            taskId: task.id,
+            toolName: task.toolName,
+            status: 'completed',
+            durationMs,
+        });
         return {
             taskId: task.id,
             toolName: task.toolName,
@@ -131,12 +159,23 @@ async function executeOne(task, outputs) {
         };
     }
     catch (err) {
+        const durationMs = Date.now() - t0;
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logger.error(`[tool] name=${task.toolName} task=${task.id} status=fail duration=${durationMs}ms err=${errorMessage}`);
+        await emit(writer, {
+            type: 'tool_completed',
+            taskId: task.id,
+            toolName: task.toolName,
+            status: 'failed',
+            durationMs,
+            error: errorMessage,
+        });
         return {
             taskId: task.id,
             toolName: task.toolName,
             status: 'failed',
             output: null,
-            error: err instanceof Error ? err.message : String(err),
+            error: errorMessage,
         };
     }
 }
@@ -144,7 +183,7 @@ exports.resolutionStep = (0, workflows_1.createStep)({
     id: 'lease-resolution-step',
     inputSchema: schemas_1.dagStateSchema,
     outputSchema: schemas_1.dagStateSchema,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, requestContext, writer }) => {
         const state = inputData;
         const graph = state.taskGraph ?? [];
         if (state.isComplete || graph.length === 0) {
@@ -159,6 +198,7 @@ exports.resolutionStep = (0, workflows_1.createStep)({
         const newResults = [];
         const failed = new Set();
         let breakForDynamic = false;
+        const toolCtx = { requestContext };
         for (const level of levels) {
             const runnable = level.filter((t) => !t.dependsOn.some((d) => failed.has(d)));
             const skipped = level
@@ -170,8 +210,18 @@ exports.resolutionStep = (0, workflows_1.createStep)({
                 output: null,
                 error: 'Upstream dependency failed',
             }));
+            for (const s of skipped) {
+                await emit(writer, {
+                    type: 'tool_completed',
+                    taskId: s.taskId,
+                    toolName: s.toolName,
+                    status: 'skipped',
+                    durationMs: 0,
+                    error: s.error,
+                });
+            }
             newResults.push(...skipped);
-            const results = await Promise.all(runnable.map((t) => executeOne(t, outputsById)));
+            const results = await Promise.all(runnable.map((t) => executeOne(t, outputsById, toolCtx, writer)));
             for (const r of results) {
                 newResults.push(r);
                 if (r.status === 'completed') {

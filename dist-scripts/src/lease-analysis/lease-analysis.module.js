@@ -25,6 +25,7 @@ exports.LeaseAnalysisModule = LeaseAnalysisModule = __decorate([
             groq_lease_analysis_service_1.GroqLeaseAnalysisService,
             lease_analysis_service_1.LeaseAnalysisService,
         ],
+        exports: [ocr_extraction_bridge_service_1.OcrExtractionBridgeService],
     })
 ], LeaseAnalysisModule);
 //# sourceMappingURL=lease-analysis.module.js.map

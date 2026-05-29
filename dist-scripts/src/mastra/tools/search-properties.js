@@ -1,21 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchPropertiesTool = void 0;
 const tools_1 = require("@mastra/core/tools");
 const zod_1 = require("zod");
-const mongoose_1 = __importDefault(require("mongoose"));
-const connectionString = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-let cachedConnection = null;
-async function getConnection() {
-    if (cachedConnection?.connection?.readyState === 1) {
-        return cachedConnection;
-    }
-    cachedConnection = await mongoose_1.default.connect(connectionString);
-    return cachedConnection;
-}
+const mongo_1 = require("../lib/mongo");
+const rbac_1 = require("../lib/rbac");
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -55,25 +44,33 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
             .optional(),
         error: zod_1.z.string().optional(),
     }),
-    execute: async (inputData) => {
+    execute: async (inputData, context) => {
         const { property_name, portfolio_id } = inputData;
         try {
-            const conn = await getConnection();
-            const db = conn.connection.db;
-            if (!db) {
-                return { success: false, error: 'Database connection not available' };
-            }
-            const propertiesCollection = db.collection('properties');
-            const leasesCollection = db.collection('leases');
-            const query = {};
+            const orgId = (0, rbac_1.getOrgId)(context);
+            let allowedPortfolioIds;
             if (portfolio_id) {
-                query.portfolio_id = portfolio_id;
+                const ok = await (0, rbac_1.assertPortfolioAccess)(portfolio_id, orgId);
+                if (!ok)
+                    return (0, rbac_1.noAccess)('property');
+                allowedPortfolioIds = [portfolio_id];
             }
+            else {
+                allowedPortfolioIds = await (0, rbac_1.getAccessiblePortfolioIds)(orgId);
+                if (allowedPortfolioIds.length === 0) {
+                    return { success: true, properties: [] };
+                }
+            }
+            const db = await (0, mongo_1.getDb)();
+            const query = {
+                portfolio_id: { $in: allowedPortfolioIds },
+            };
             if (property_name) {
                 const rx = { $regex: escapeRegex(property_name), $options: 'i' };
                 query.$or = [{ property_name: rx }, { address: rx }];
             }
-            const properties = await propertiesCollection
+            const properties = await db
+                .collection('properties')
                 .find(query)
                 .project({
                 propertyId: 1,
@@ -88,7 +85,8 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
                 .map((p) => p.propertyId)
                 .filter((id) => typeof id === 'string');
             const leaseRows = propertyIds.length
-                ? await leasesCollection
+                ? await db
+                    .collection('leases')
                     .find({ property_id: { $in: propertyIds }, status: 'processed' }, { projection: { leaseId: 1, property_id: 1 } })
                     .toArray()
                 : [];

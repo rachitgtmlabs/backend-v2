@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const mongoose_1 = require("@nestjs/mongoose");
+const schedule_1 = require("@nestjs/schedule");
 const mongo_indexes_service_1 = require("./database/mongo-indexes.service");
 const amendment_analysis_module_1 = require("./amendment-analysis/amendment-analysis.module");
 const cam_module_1 = require("./cam/cam.module");
@@ -25,6 +26,8 @@ const dashboard_module_1 = require("./dashboard/dashboard.module");
 const auth_module_1 = require("./auth/auth.module");
 const users_module_1 = require("./users/users.module");
 const organizations_module_1 = require("./organizations/organizations.module");
+const briefing_module_1 = require("./briefing/briefing.module");
+const exec_briefing_module_1 = require("./exec-briefing/exec-briefing.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -32,6 +35,7 @@ exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
             config_1.ConfigModule.forRoot({ isGlobal: true }),
+            schedule_1.ScheduleModule.forRoot(),
             mongoose_1.MongooseModule.forRootAsync({
                 inject: [config_1.ConfigService],
                 useFactory: (config) => ({
@@ -52,6 +56,8 @@ exports.AppModule = AppModule = __decorate([
             auth_module_1.AuthModule,
             users_module_1.UsersModule,
             organizations_module_1.OrganizationsModule,
+            briefing_module_1.BriefingModule,
+            exec_briefing_module_1.ExecBriefingModule,
         ],
         providers: [mongo_indexes_service_1.MongoIndexesService],
     })

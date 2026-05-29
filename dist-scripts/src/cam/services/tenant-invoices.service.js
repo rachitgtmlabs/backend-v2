@@ -16,11 +16,15 @@ exports.TenantInvoicesService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
+const lease_schema_1 = require("../../lease/schemas/lease.schema");
+const bill_schema_1 = require("../schemas/bill.schema");
 const tenant_invoice_schema_1 = require("../schemas/tenant-invoice.schema");
 const ids_1 = require("../utils/ids");
 let TenantInvoicesService = class TenantInvoicesService {
-    constructor(model) {
+    constructor(model, billModel, leaseModel) {
         this.model = model;
+        this.billModel = billModel;
+        this.leaseModel = leaseModel;
     }
     async list(filter) {
         const q = {
@@ -45,15 +49,17 @@ let TenantInvoicesService = class TenantInvoicesService {
         else if (filter.reconciled === false) {
             q.tenant_paid_amount = null;
         }
-        let pipeline = this.model
+        const docs = await this.model
             .find(q)
             .sort({ committed_at: -1, createdAt: -1 })
-            .limit(filter.limit ?? 500);
+            .limit(filter.limit ?? 500)
+            .lean();
+        const hydrated = await this.hydrateWithBills(docs);
         if (filter.vendor_name) {
-            pipeline = pipeline;
+            const needle = filter.vendor_name.toLowerCase();
+            return hydrated.filter((d) => (d.bill_vendor_name ?? '').toLowerCase().includes(needle));
         }
-        const docs = await pipeline.lean();
-        return docs.map(toPayload);
+        return hydrated;
     }
     async getOne(portfolioId, invoiceId) {
         const doc = await this.model
@@ -61,7 +67,54 @@ let TenantInvoicesService = class TenantInvoicesService {
             .lean();
         if (!doc)
             throw new common_1.NotFoundException(`Invoice ${invoiceId} not found`);
-        return toPayload(doc);
+        const [hydrated] = await this.hydrateWithBills([doc]);
+        return hydrated;
+    }
+    async hydrateWithBills(docs) {
+        const billIds = Array.from(new Set(docs.map((d) => d.billId).filter((id) => !!id)));
+        const unitIds = Array.from(new Set(docs.map((d) => d.unit_id).filter((id) => !!id)));
+        const billsById = new Map();
+        if (billIds.length > 0) {
+            const bills = await this.billModel
+                .find({ billId: { $in: billIds } })
+                .select({ billId: 1, invoice_date: 1, vendor_name: 1 })
+                .lean();
+            for (const b of bills) {
+                billsById.set(b.billId, {
+                    invoice_date: b.invoice_date ?? null,
+                    vendor_name: b.vendor_name ?? null,
+                });
+            }
+        }
+        const tenantNameByUnit = new Map();
+        if (unitIds.length > 0) {
+            const leases = await this.leaseModel
+                .find({
+                unit_id: { $in: unitIds },
+                status: 'processed',
+            })
+                .sort({ updatedAt: -1 })
+                .select({ unit_id: 1, lease_information: 1 })
+                .lean();
+            for (const l of leases) {
+                if (!l.unit_id || tenantNameByUnit.has(l.unit_id))
+                    continue;
+                tenantNameByUnit.set(l.unit_id, extractTenantName(l.lease_information));
+            }
+        }
+        return docs.map((d) => {
+            const b = d.billId ? billsById.get(d.billId) : undefined;
+            const storedTenant = typeof d.tenant_name === 'string' && d.tenant_name.trim()
+                ? d.tenant_name.trim()
+                : null;
+            const resolvedTenant = storedTenant ?? (d.unit_id ? tenantNameByUnit.get(d.unit_id) ?? null : null);
+            return {
+                ...d,
+                bill_invoice_date: b?.invoice_date ?? null,
+                bill_vendor_name: b?.vendor_name ?? null,
+                tenant_name: resolvedTenant,
+            };
+        });
     }
     async recordPayment(invoiceId, dto, actorFromCtx) {
         const doc = await this.model.findOne({
@@ -159,7 +212,11 @@ exports.TenantInvoicesService = TenantInvoicesService;
 exports.TenantInvoicesService = TenantInvoicesService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(tenant_invoice_schema_1.TenantInvoice.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model])
+    __param(1, (0, mongoose_1.InjectModel)(bill_schema_1.Bill.name)),
+    __param(2, (0, mongoose_1.InjectModel)(lease_schema_1.Lease.name)),
+    __metadata("design:paramtypes", [mongoose_2.Model,
+        mongoose_2.Model,
+        mongoose_2.Model])
 ], TenantInvoicesService);
 function computeVarianceTag(invoiced, paid) {
     const EPSILON = 0.005;
@@ -171,5 +228,17 @@ function computeVarianceTag(invoiced, paid) {
 }
 function toPayload(d) {
     return d;
+}
+function extractTenantName(info) {
+    const inner = info
+        ?.leaseInformation;
+    if (!inner)
+        return null;
+    const candidate = typeof inner.leaseTo?.value === 'string' && inner.leaseTo.value.trim()
+        ? String(inner.leaseTo.value).trim()
+        : typeof inner.tenant?.value === 'string' && inner.tenant.value.trim()
+            ? String(inner.tenant.value).trim()
+            : null;
+    return candidate;
 }
 //# sourceMappingURL=tenant-invoices.service.js.map
