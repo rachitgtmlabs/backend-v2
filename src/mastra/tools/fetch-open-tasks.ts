@@ -1,6 +1,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb, severityRank } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  getOrgId,
+} from '../lib/rbac';
 
 export const fetchOpenTasksTool = createTool({
   id: 'fetch-open-tasks',
@@ -28,15 +34,29 @@ export const fetchOpenTasksTool = createTool({
     total: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, limit } = inputData;
     try {
+      const orgId = getOrgId(context);
+      let scopedPortfolioIds: string[];
+      if (portfolio_id) {
+        if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+          return noAccess('tasks');
+        }
+        scopedPortfolioIds = [portfolio_id];
+      } else {
+        scopedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (scopedPortfolioIds.length === 0) {
+          return { success: true, tasks: [], total: 0 };
+        }
+      }
+
       const db = await getDb();
       const filter: Record<string, unknown> = {
         category: 'task',
         is_resolved: false,
+        portfolio_id: { $in: scopedPortfolioIds },
       };
-      if (portfolio_id) filter.portfolio_id = portfolio_id;
       if (property_id) filter.property_id = property_id;
 
       const docs = await db

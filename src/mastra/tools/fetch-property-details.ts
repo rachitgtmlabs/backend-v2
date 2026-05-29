@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../lib/mongo';
+import { assertPortfolioAccess, noAccess, getOrgId } from '../lib/rbac';
 
 export const fetchPropertyDetailsTool = createTool({
   id: 'fetch-property-details',
@@ -35,9 +36,13 @@ export const fetchPropertyDetailsTool = createTool({
     openAlerts: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id } = inputData;
     try {
+      const orgId = getOrgId(context);
+      if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+        return noAccess('property');
+      }
       const db = await getDb();
 
       const [property, latestLease] = await Promise.all([

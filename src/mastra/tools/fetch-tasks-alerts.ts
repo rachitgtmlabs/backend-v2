@@ -1,20 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import mongoose from 'mongoose';
-
-const connectionString =
-  process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-
-let cachedConnection: typeof mongoose | null = null;
-
-async function getConnection() {
-  if (cachedConnection?.connection?.readyState === 1) {
-    return cachedConnection;
-  }
-
-  cachedConnection = await mongoose.connect(connectionString);
-  return cachedConnection;
-}
+import { getDb } from '../lib/mongo';
+import { assertPortfolioAccess, noAccess, getOrgId } from '../lib/rbac';
 
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low'] as const;
 
@@ -107,15 +94,15 @@ Use when the user asks what to focus on today, about their tasks, to-dos, alerts
     alerts: z.array(z.record(z.unknown())).optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, lease_id: leaseIdInput } = inputData;
 
     try {
-      const conn = await getConnection();
-      const db = conn.connection.db;
-      if (!db) {
-        return { success: false, error: 'Database connection not available' };
+      const orgId = getOrgId(context);
+      if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+        return noAccess('tasks/alerts');
       }
+      const db = await getDb();
 
       const leasesCollection = db.collection('leases');
       const propertyAlertsColl = db.collection('property_alerts');

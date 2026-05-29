@@ -1,6 +1,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb, severityRank } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  getOrgId,
+} from '../lib/rbac';
 
 export const fetchRiskSummaryTool = createTool({
   id: 'fetch-risk-summary',
@@ -45,12 +51,32 @@ export const fetchRiskSummaryTool = createTool({
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, minSeverity, limit } = inputData;
     try {
+      const orgId = getOrgId(context);
+      let scopedPortfolioIds: string[];
+      if (portfolio_id) {
+        if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+          return noAccess('risks');
+        }
+        scopedPortfolioIds = [portfolio_id];
+      } else {
+        scopedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (scopedPortfolioIds.length === 0) {
+          return {
+            success: true,
+            risks: [],
+            countsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+          };
+        }
+      }
+
       const db = await getDb();
-      const filter: Record<string, unknown> = { is_resolved: false };
-      if (portfolio_id) filter.portfolio_id = portfolio_id;
+      const filter: Record<string, unknown> = {
+        is_resolved: false,
+        portfolio_id: { $in: scopedPortfolioIds },
+      };
       if (property_id) filter.property_id = property_id;
 
       const [alertsNew, alertsLegacy] = await Promise.all([

@@ -1,8 +1,9 @@
 import { Agent } from '@mastra/core/agent';
 
-const groqModelId =
-  process.env.GROQ_MODEL?.trim().replace(/^groq\//, '') ??
-  'openai/gpt-oss-120b';
+// See orchestrator-agent.ts for the rationale on model choice + the
+// CHAT_MODEL override.
+const chatModel =
+  process.env.CHAT_MODEL?.trim() ?? 'openai/gpt-4o-mini';
 
 export const answeringAgent = new Agent({
   id: 'lease-answering-agent',
@@ -38,5 +39,5 @@ You must NEVER write generic placeholder names like "Portfolio A", "Property B",
 - If needsUserClarification is set but no tool returned candidates (the orchestrator was unsure how to start), ask the user a plain clarifying question instead — do NOT list placeholder options.
 
 Respond ONLY with the structured JSON object.`,
-  model: `groq/${groqModelId}`,
+  model: chatModel,
 });

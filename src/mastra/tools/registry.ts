@@ -11,6 +11,8 @@ import { fetchRiskSummaryTool } from './fetch-risk-summary';
 import { fetchOpenTasksTool } from './fetch-open-tasks';
 import { fetchExpiringLeasesTool } from './fetch-expiring-leases';
 import { fetchCamDataTool } from './fetch-cam-data';
+import { fetchCamRulesTool } from './fetch-cam-rules';
+import { fetchCamReconciliationTool } from './fetch-cam-reconciliation';
 import { fetchLeaseClausesTool } from './fetch-lease-clauses';
 import { fetchRemindersTool } from './fetch-reminders';
 import type { ToolName } from '../workflows/schemas';
@@ -42,6 +44,9 @@ export const TOOL_REGISTRY: Record<ToolName, ExecutableTool> = {
   'fetch-expiring-leases':
     fetchExpiringLeasesTool as unknown as ExecutableTool,
   'fetch-cam-data': fetchCamDataTool as unknown as ExecutableTool,
+  'fetch-cam-rules': fetchCamRulesTool as unknown as ExecutableTool,
+  'fetch-cam-reconciliation':
+    fetchCamReconciliationTool as unknown as ExecutableTool,
   'fetch-lease-clauses': fetchLeaseClausesTool as unknown as ExecutableTool,
   'fetch-reminders': fetchRemindersTool as unknown as ExecutableTool,
 };
@@ -127,8 +132,20 @@ export const TOOL_DIRECTORY: Array<{
   },
   {
     name: 'fetch-cam-data',
-    when: 'CAM/operating-expense clauses for one lease + CAM-tagged alerts. NOTE: billed-vs-entitled reconciliation is not yet available.',
+    when: 'CAM/operating-expense clauses for one lease + CAM-tagged alerts.',
     inputs: '{ portfolio_id, property_id, lease_id? }',
+    isDynamic: false,
+  },
+  {
+    name: 'fetch-cam-rules',
+    when: "Portfolio's reusable CAM rule templates (rule_code, share %, base year, exclusions).",
+    inputs: '{ portfolio_id, rule_code?, query?, limit? }',
+    isDynamic: false,
+  },
+  {
+    name: 'fetch-cam-reconciliation',
+    when: "Audit-reconciliation history ('Reconcile YYYY' runs): per-unit deltas, preview vs applied, adjustments_created.",
+    inputs: '{ portfolio_id, property_id?, runId?, calendar_year?, mode?, unit_id?, limit? }',
     isDynamic: false,
   },
   {

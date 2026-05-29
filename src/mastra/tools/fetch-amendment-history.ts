@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../lib/mongo';
+import { assertPortfolioAccess, noAccess, getOrgId } from '../lib/rbac';
 
 /** Walk amendments in order and emit field-level change events. */
 function flatten(
@@ -53,13 +54,17 @@ export const fetchAmendmentHistoryTool = createTool({
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { lease_id, fieldFilter } = inputData;
     try {
+      const orgId = getOrgId(context);
       const db = await getDb();
       const lease = await db.collection('leases').findOne({ leaseId: lease_id });
       if (!lease) {
         return { success: false, error: `Lease not found: ${lease_id}` };
+      }
+      if (!(await assertPortfolioAccess(String(lease.portfolio_id), orgId))) {
+        return noAccess('lease');
       }
       const amendments = await db
         .collection('amendments')

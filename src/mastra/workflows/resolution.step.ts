@@ -127,6 +127,7 @@ function parseInputs(raw: unknown): Record<string, unknown> {
 async function executeOne(
   task: TaskNode,
   outputs: Map<string, unknown>,
+  toolExecCtx: { requestContext: unknown },
 ): Promise<TaskResult> {
   const tool = TOOL_REGISTRY[task.toolName];
   if (!tool) {
@@ -141,9 +142,11 @@ async function executeOne(
   try {
     const rawInputs = parseInputs(task.inputs);
     const inputs = resolveInputs(rawInputs, outputs);
-    // Mastra tools accept ({ context, ... }) OR (inputData) depending on version.
-    // createTool's execute signature is (inputData, ctx) in this version.
-    const output = await tool.execute(inputs);
+    // Tools receive a Mastra-style ToolExecutionContext whose `requestContext`
+    // carries the caller's organization_id. They read RBAC scope from there
+    // (NOT from inputs) so the orchestrator never has the chance to forget,
+    // override, or be tricked into leaking cross-tenant data.
+    const output = await tool.execute(inputs, toolExecCtx);
     return {
       taskId: task.id,
       toolName: task.toolName,
@@ -165,7 +168,7 @@ export const resolutionStep = createStep({
   id: 'lease-resolution-step',
   inputSchema: dagStateSchema,
   outputSchema: dagStateSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const state = inputData as DagState;
     const graph = state.taskGraph ?? [];
     if (state.isComplete || graph.length === 0) {
@@ -181,6 +184,10 @@ export const resolutionStep = createStep({
     const newResults: TaskResult[] = [];
     const failed = new Set<string>();
     let breakForDynamic = false;
+
+    // Mastra threads the RequestContext set by chat.service.ts down to every
+    // step. We re-wrap it in the ToolExecutionContext shape that tools expect.
+    const toolCtx = { requestContext };
 
     for (const level of levels) {
       // Skip tasks whose upstream deps already failed
@@ -201,7 +208,7 @@ export const resolutionStep = createStep({
       newResults.push(...skipped);
 
       const results = await Promise.all(
-        runnable.map((t) => executeOne(t, outputsById)),
+        runnable.map((t) => executeOne(t, outputsById, toolCtx)),
       );
       for (const r of results) {
         newResults.push(r);
