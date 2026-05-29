@@ -61,4 +61,10 @@ export class OrganizationsService {
   findByOrgId(orgId: string): Promise<OrganizationDocument | null> {
     return this.orgModel.findOne({ orgId }).exec();
   }
+
+  /** All organizations. Used by the daily-briefing scheduler to sweep every
+   * org and fire each one's briefing at its local 6 AM. */
+  listAll(): Promise<OrganizationDocument[]> {
+    return this.orgModel.find().exec();
+  }
 }

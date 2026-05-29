@@ -1,20 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import mongoose from 'mongoose';
-
-const connectionString =
-  process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-
-let cachedConnection: typeof mongoose | null = null;
-
-async function getConnection() {
-  if (cachedConnection?.connection?.readyState === 1) {
-    return cachedConnection;
-  }
-
-  cachedConnection = await mongoose.connect(connectionString);
-  return cachedConnection;
-}
+import { getDb } from '../lib/mongo';
+import { orgPortfolioFilter, getOrgId } from '../lib/rbac';
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -95,7 +82,7 @@ Returns ranked matches so you can disambiguate: if several match, ask the user w
     totalPortfoliosScanned: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const rawQuery = inputData.query.trim();
     const limit = inputData.limit ?? 15;
 
@@ -104,15 +91,12 @@ Returns ranked matches so you can disambiguate: if several match, ask the user w
     }
 
     try {
-      const conn = await getConnection();
-      const db = conn.connection.db;
-      if (!db) {
-        return { success: false, error: 'Database connection not available' };
-      }
+      const orgId = getOrgId(context);
+      const db = await getDb();
 
-      const portfoliosCollection = db.collection('portfolios');
-      const rows = await portfoliosCollection
-        .find({})
+      const rows = await db
+        .collection('portfolios')
+        .find(orgPortfolioFilter(orgId))
         .project({
           portfolioId: 1,
           name: 1,

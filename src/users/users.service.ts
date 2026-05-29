@@ -19,6 +19,29 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
+  /** Users in an org who have opted into the daily-briefing email and have an
+   * email address on file. Used by the briefing notifier. */
+  async findBriefingSubscribers(orgId: string): Promise<UserDocument[]> {
+    return this.userModel
+      .find({
+        organization_id: orgId,
+        briefingEmailOptIn: true,
+        email: { $exists: true, $ne: null },
+      })
+      .exec();
+  }
+
+  /** Toggle a user's daily-briefing email subscription. Returns the new state. */
+  async setBriefingEmailOptIn(
+    userId: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    await this.userModel
+      .updateOne({ _id: userId }, { $set: { briefingEmailOptIn: enabled } })
+      .exec();
+    return enabled;
+  }
+
   async create(userData: Partial<User>): Promise<UserDocument> {
     const newUser = new this.userModel(userData);
     return newUser.save();

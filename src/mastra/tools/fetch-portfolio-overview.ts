@@ -1,6 +1,13 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb, severityRank } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  orgPortfolioFilter,
+  getOrgId,
+} from '../lib/rbac';
 
 export const fetchPortfolioOverviewTool = createTool({
   id: 'fetch-portfolio-overview',
@@ -44,26 +51,57 @@ export const fetchPortfolioOverviewTool = createTool({
     expiringIn12Months: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id } = inputData;
     try {
+      const orgId = getOrgId(context);
+      // RBAC scoping. Two paths:
+      //   (a) portfolio_id given → assert it belongs to the org, scope all
+      //       downstream filters to that single id.
+      //   (b) no portfolio_id    → aggregate across every accessible portfolio.
+      //                            Empty access set = empty result (fail-closed).
+      let scopedPortfolioIds: string[];
+      if (portfolio_id) {
+        const ok = await assertPortfolioAccess(portfolio_id, orgId);
+        if (!ok) return noAccess('portfolio');
+        scopedPortfolioIds = [portfolio_id];
+      } else {
+        scopedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (scopedPortfolioIds.length === 0) {
+          return {
+            success: true,
+            totals: {
+              portfolios: 0,
+              properties: 0,
+              leases: 0,
+              processedLeases: 0,
+              amendments: 0,
+            },
+            alertCounts: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              total: 0,
+            },
+            openTaskCount: 0,
+            expiringIn12Months: 0,
+          };
+        }
+      }
+
       const db = await getDb();
 
-      const propertyFilter: Record<string, unknown> = {};
-      const leaseFilter: Record<string, unknown> = {};
-      const amendmentFilter: Record<string, unknown> = {};
-      const alertFilter: Record<string, unknown> = {};
+      const scopeClause = { portfolio_id: { $in: scopedPortfolioIds } };
+      const propertyFilter: Record<string, unknown> = { ...scopeClause };
+      const leaseFilter: Record<string, unknown> = { ...scopeClause };
+      const amendmentFilter: Record<string, unknown> = { ...scopeClause };
+      const alertFilter: Record<string, unknown> = { ...scopeClause };
       const taskFilter: Record<string, unknown> = {
+        ...scopeClause,
         category: 'task',
         is_resolved: false,
       };
-      if (portfolio_id) {
-        propertyFilter.portfolio_id = portfolio_id;
-        leaseFilter.portfolio_id = portfolio_id;
-        amendmentFilter.portfolio_id = portfolio_id;
-        alertFilter.portfolio_id = portfolio_id;
-        taskFilter.portfolio_id = portfolio_id;
-      }
 
       const [
         portfolioCount,
@@ -79,7 +117,11 @@ export const fetchPortfolioOverviewTool = createTool({
       ] = await Promise.all([
         db
           .collection('portfolios')
-          .countDocuments(portfolio_id ? { portfolioId: portfolio_id } : {}),
+          .countDocuments(
+            portfolio_id
+              ? { portfolioId: portfolio_id, ...orgPortfolioFilter(orgId) }
+              : orgPortfolioFilter(orgId),
+          ),
         db.collection('properties').countDocuments(propertyFilter),
         db.collection('leases').countDocuments(leaseFilter),
         db
@@ -87,7 +129,10 @@ export const fetchPortfolioOverviewTool = createTool({
           .countDocuments({ ...leaseFilter, status: 'processed' }),
         db.collection('amendments').countDocuments(amendmentFilter),
         portfolio_id
-          ? db.collection('portfolios').findOne({ portfolioId: portfolio_id })
+          ? db.collection('portfolios').findOne({
+              portfolioId: portfolio_id,
+              ...orgPortfolioFilter(orgId),
+            })
           : Promise.resolve(null),
         db.collection('property_alerts').find(alertFilter).toArray(),
         db

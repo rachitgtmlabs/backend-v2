@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb, deepMerge } from '../lib/mongo';
+import { assertPortfolioAccess, noAccess, getOrgId } from '../lib/rbac';
 
 /**
  * CAM-related fields the analyzer commonly stores in lease_information.
@@ -52,9 +53,13 @@ export const fetchCamDataTool = createTool({
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, lease_id: leaseIdInput } = inputData;
     try {
+      const orgId = getOrgId(context);
+      if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+        return noAccess('CAM data');
+      }
       const db = await getDb();
       let lease;
       if (leaseIdInput) {

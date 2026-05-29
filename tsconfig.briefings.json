@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-scripts",
+    "rootDir": "./",
+    "noEmit": false,
+    "incremental": false
+  },
+  "include": [
+    "src/**/*",
+    "scripts/run-briefings.ts",
+    "scripts/run-exec-briefings.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-scripts"]
+}

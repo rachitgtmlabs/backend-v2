@@ -1,0 +1,1 @@
+export declare const fetchAmendmentHistoryTool: import("@mastra/core/tools").Tool<InferPublicSchema<T>, InferPublicSchema<T>, InferPublicSchema<T>, InferPublicSchema<T>, import("@mastra/core/tools").ToolExecutionContext<InferPublicSchema<T>, InferPublicSchema<T>, unknown>, "fetch-amendment-history", unknown>;

@@ -1,63 +1,13 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import mongoose from 'mongoose';
-
-const connectionString =
-  process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-
-let cachedConnection: typeof mongoose | null = null;
-
-async function getConnection() {
-  if (cachedConnection?.connection?.readyState === 1) {
-    return cachedConnection;
-  }
-
-  cachedConnection = await mongoose.connect(connectionString);
-  return cachedConnection;
-}
-
-function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Partial<T>,
-): T {
-  const result = { ...target };
-
-  for (const key of Object.keys(source) as Array<keyof T>) {
-    const sourceValue = source[key];
-    const targetValue = target[key];
-
-    if (sourceValue === undefined || sourceValue === null) continue;
-
-    if (
-      isPlainObject(sourceValue) &&
-      isPlainObject(targetValue)
-    ) {
-      result[key] = deepMerge(
-        targetValue as Record<string, unknown>,
-        sourceValue as Record<string, unknown>,
-      ) as T[keyof T];
-    } else {
-      result[key] = sourceValue as T[keyof T];
-    }
-  }
-
-  return result;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
+import { getDb, deepMerge } from '../lib/mongo';
+import { assertPortfolioAccess, noAccess, getOrgId } from '../lib/rbac';
 
 export const fetchLeaseDocumentTool = createTool({
   id: 'fetch-lease-document',
-  description: `Fetches the complete lease document and all amendments for a given lease. 
-Use this tool to retrieve lease information when answering questions about lease terms, 
-dates, financial details, clauses, or any other lease-related data. 
+  description: `Fetches the complete lease document and all amendments for a given lease.
+Use this tool to retrieve lease information when answering questions about lease terms,
+dates, financial details, clauses, or any other lease-related data.
 The tool returns the effective (merged) state of the lease including all amendments applied.`,
   inputSchema: z.object({
     portfolio_id: z.string().describe('The portfolio ID (e.g., pf_abc123)'),
@@ -96,21 +46,17 @@ The tool returns the effective (merged) state of the lease including all amendme
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, lease_id } = inputData;
 
     try {
-      const conn = await getConnection();
-      const db = conn.connection.db;
-
-      if (!db) {
-        return { success: false, error: 'Database connection not available' };
+      const orgId = getOrgId(context);
+      if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+        return noAccess('lease');
       }
+      const db = await getDb();
 
-      const leasesCollection = db.collection('leases');
-      const amendmentsCollection = db.collection('amendments');
-
-      const lease = await leasesCollection.findOne({ leaseId: lease_id });
+      const lease = await db.collection('leases').findOne({ leaseId: lease_id });
 
       if (!lease) {
         return { success: false, error: `Lease not found: ${lease_id}` };
@@ -130,7 +76,8 @@ The tool returns the effective (merged) state of the lease including all amendme
         };
       }
 
-      const amendments = await amendmentsCollection
+      const amendments = await db
+        .collection('amendments')
         .find({ lease_id: lease_id })
         .sort({ version: 1 })
         .toArray();

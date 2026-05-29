@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MongoIndexesService } from './database/mongo-indexes.service';
 import { AmendmentAnalysisModule } from './amendment-analysis/amendment-analysis.module';
+import { CamModule } from './cam/cam.module';
 import { LeaseAnalysisModule } from './lease-analysis/lease-analysis.module';
 import { LeaseModule } from './lease/lease.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
@@ -15,10 +17,13 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { BriefingModule } from './briefing/briefing.module';
+import { ExecBriefingModule } from './exec-briefing/exec-briefing.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -31,6 +36,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
     LeaseModule,
     LeaseAnalysisModule,
     AmendmentAnalysisModule,
+    CamModule,
     TasksAlertsModule,
     ChatModule,
     GoogleCalendarModule,
@@ -38,6 +44,8 @@ import { OrganizationsModule } from './organizations/organizations.module';
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    BriefingModule,
+    ExecBriefingModule,
   ],
   providers: [MongoIndexesService],
 })

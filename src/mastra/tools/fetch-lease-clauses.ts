@@ -1,6 +1,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb, deepMerge } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  getOrgId,
+} from '../lib/rbac';
 
 function flatten(
   obj: Record<string, unknown>,
@@ -53,12 +59,28 @@ export const fetchLeaseClausesTool = createTool({
     total: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, keyword, limit } = inputData;
     try {
+      const orgId = getOrgId(context);
+      let scopedPortfolioIds: string[];
+      if (portfolio_id) {
+        if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+          return noAccess('clauses');
+        }
+        scopedPortfolioIds = [portfolio_id];
+      } else {
+        scopedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (scopedPortfolioIds.length === 0) {
+          return { success: true, matches: [], total: 0 };
+        }
+      }
+
       const db = await getDb();
-      const filter: Record<string, unknown> = { status: 'processed' };
-      if (portfolio_id) filter.portfolio_id = portfolio_id;
+      const filter: Record<string, unknown> = {
+        status: 'processed',
+        portfolio_id: { $in: scopedPortfolioIds },
+      };
       if (property_id) filter.property_id = property_id;
 
       const leases = await db.collection('leases').find(filter).toArray();

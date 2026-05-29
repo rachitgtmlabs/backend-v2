@@ -1,0 +1,1 @@
+export declare const resolutionStep: import("@mastra/core/workflows").Step<"lease-resolution-step", any, InferPublicSchema<TInputSchema>, InferPublicSchema<TOutputSchema>, InferPublicSchema<TResumeSchema>, InferPublicSchema<TSuspendSchema>, import("@mastra/core/workflows").DefaultEngineType, InferPublicSchema<TRequestContextSchema>>;

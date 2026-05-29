@@ -1,6 +1,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  getOrgId,
+} from '../lib/rbac';
 
 export const fetchRemindersTool = createTool({
   id: 'fetch-reminders',
@@ -30,16 +36,30 @@ export const fetchRemindersTool = createTool({
     total: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { portfolio_id, property_id, withinDays, limit } = inputData;
     try {
-      const db = await getDb();
-      const leaseFilter: Record<string, unknown> = {};
-      const alertFilter: Record<string, unknown> = { is_resolved: false };
+      const orgId = getOrgId(context);
+      let scopedPortfolioIds: string[];
       if (portfolio_id) {
-        leaseFilter.portfolio_id = portfolio_id;
-        alertFilter.portfolio_id = portfolio_id;
+        if (!(await assertPortfolioAccess(portfolio_id, orgId))) {
+          return noAccess('reminders');
+        }
+        scopedPortfolioIds = [portfolio_id];
+      } else {
+        scopedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (scopedPortfolioIds.length === 0) {
+          return { success: true, reminders: [], total: 0 };
+        }
       }
+
+      const db = await getDb();
+      const scopeClause = { portfolio_id: { $in: scopedPortfolioIds } };
+      const leaseFilter: Record<string, unknown> = { ...scopeClause };
+      const alertFilter: Record<string, unknown> = {
+        ...scopeClause,
+        is_resolved: false,
+      };
       if (property_id) {
         leaseFilter.property_id = property_id;
         alertFilter.property_id = property_id;

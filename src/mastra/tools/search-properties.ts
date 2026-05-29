@@ -1,20 +1,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import mongoose from 'mongoose';
-
-const connectionString =
-  process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-
-let cachedConnection: typeof mongoose | null = null;
-
-async function getConnection() {
-  if (cachedConnection?.connection?.readyState === 1) {
-    return cachedConnection;
-  }
-
-  cachedConnection = await mongoose.connect(connectionString);
-  return cachedConnection;
-}
+import { getDb } from '../lib/mongo';
+import {
+  assertPortfolioAccess,
+  getAccessiblePortfolioIds,
+  noAccess,
+  getOrgId,
+} from '../lib/rbac';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -58,25 +50,31 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { property_name, portfolio_id } = inputData;
 
     try {
-      const conn = await getConnection();
-      const db = conn.connection.db;
-
-      if (!db) {
-        return { success: false, error: 'Database connection not available' };
-      }
-
-      const propertiesCollection = db.collection('properties');
-      const leasesCollection = db.collection('leases');
-
-      const query: Record<string, unknown> = {};
-
+      const orgId = getOrgId(context);
+      // RBAC: cap the search to portfolios in the caller's org.
+      // If a portfolio_id was supplied, verify it belongs to the org first;
+      // otherwise constrain to the full accessible-set via $in.
+      let allowedPortfolioIds: string[];
       if (portfolio_id) {
-        query.portfolio_id = portfolio_id;
+        const ok = await assertPortfolioAccess(portfolio_id, orgId);
+        if (!ok) return noAccess('property');
+        allowedPortfolioIds = [portfolio_id];
+      } else {
+        allowedPortfolioIds = await getAccessiblePortfolioIds(orgId);
+        if (allowedPortfolioIds.length === 0) {
+          return { success: true, properties: [] };
+        }
       }
+
+      const db = await getDb();
+
+      const query: Record<string, unknown> = {
+        portfolio_id: { $in: allowedPortfolioIds },
+      };
 
       if (property_name) {
         const rx = { $regex: escapeRegex(property_name), $options: 'i' };
@@ -85,7 +83,8 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
         query.$or = [{ property_name: rx }, { address: rx }];
       }
 
-      const properties = await propertiesCollection
+      const properties = await db
+        .collection('properties')
         .find(query)
         .project({
           propertyId: 1,
@@ -103,7 +102,8 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
         .filter((id): id is string => typeof id === 'string');
 
       const leaseRows = propertyIds.length
-        ? await leasesCollection
+        ? await db
+            .collection('leases')
             .find(
               { property_id: { $in: propertyIds }, status: 'processed' },
               { projection: { leaseId: 1, property_id: 1 } },
@@ -114,7 +114,6 @@ Pass portfolio_id ONLY when the user explicitly scoped the question to a portfol
       const leaseByProperty = new Map<string, string>();
       for (const row of leaseRows) {
         if (row.property_id && row.leaseId) {
-          // Prefer the first match (queries above are already filtered to processed).
           if (!leaseByProperty.has(row.property_id)) {
             leaseByProperty.set(row.property_id, row.leaseId);
           }

@@ -1,15 +1,25 @@
 import mongoose from 'mongoose';
 
-const connectionString =
-  process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq';
-
 let cachedConnection: typeof mongoose | null = null;
+
+/**
+ * Read the URI lazily — NestJS's ConfigModule populates process.env AFTER
+ * this module is first imported. Reading at module-load time was silently
+ * falling back to `mongodb://127.0.0.1:27017/lease_iq` even though the real
+ * backend is on Atlas, causing chat tools to query a different database than
+ * the REST controllers.
+ */
+function resolveConnectionString(): string {
+  return (
+    process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/lease_iq'
+  );
+}
 
 export async function getConnection() {
   if (cachedConnection?.connection?.readyState === 1) {
     return cachedConnection;
   }
-  cachedConnection = await mongoose.connect(connectionString);
+  cachedConnection = await mongoose.connect(resolveConnectionString());
   return cachedConnection;
 }
 
