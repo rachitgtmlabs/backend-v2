@@ -6,6 +6,7 @@ import {
   type UIContext,
   type OrchestratorOutput,
 } from './schemas';
+import type { ChatStreamEvent } from '../../chat/chat-stream.types';
 
 function summarizeUiContext(ctx: UIContext): string {
   const parts: string[] = [];
@@ -116,11 +117,30 @@ function buildPrompt(state: DagState): string {
     .join('\n');
 }
 
+/**
+ * Push a custom event onto the workflow's writer stream. `writer.write()` is
+ * a Mastra-provided WritableStream — values pass through `run.fullStream` to
+ * the controller, which forwards them as NDJSON to the browser. Safe to call
+ * without a writer (e.g. when the workflow runs via `run.start()` instead of
+ * `run.stream()`); the no-op branch keeps non-streaming callers working.
+ */
+async function emit(
+  writer: { write: (data: unknown) => Promise<void> } | undefined,
+  event: ChatStreamEvent,
+): Promise<void> {
+  if (!writer) return;
+  try {
+    await writer.write(event);
+  } catch {
+    // Best-effort — never let a closed/errored stream break the workflow.
+  }
+}
+
 export const orchestratorStep = createStep({
   id: 'lease-orchestrator-step',
   inputSchema: dagStateSchema,
   outputSchema: dagStateSchema,
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, writer }) => {
     const state = inputData as DagState;
     const agent = mastra?.getAgentById('lease-orchestrator-agent');
     if (!agent) {
@@ -136,6 +156,13 @@ export const orchestratorStep = createStep({
         ],
       };
     }
+
+    await emit(writer, {
+      type: 'status',
+      stage: 'planning',
+      state: 'started',
+      iteration: state.iteration,
+    });
 
     const prompt = buildPrompt(state);
 
@@ -177,6 +204,14 @@ export const orchestratorStep = createStep({
         ],
       };
     }
+
+    await emit(writer, {
+      type: 'status',
+      stage: 'planning',
+      state: 'completed',
+      iteration: state.iteration,
+      thought: parsed.thought,
+    });
 
     return {
       ...state,

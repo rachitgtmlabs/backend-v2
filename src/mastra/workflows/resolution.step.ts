@@ -1,4 +1,5 @@
 import { createStep } from '@mastra/core/workflows';
+import { Logger } from '@nestjs/common';
 import {
   dagStateSchema,
   type DagState,
@@ -6,6 +7,22 @@ import {
   type TaskResult,
 } from './schemas';
 import { TOOL_REGISTRY } from '../tools/registry';
+import type { ChatStreamEvent } from '../../chat/chat-stream.types';
+
+const logger = new Logger('LeaseChatResolution');
+
+/** Best-effort writer.write — never let a closed stream break the workflow. */
+async function emit(
+  writer: { write: (data: unknown) => Promise<void> } | undefined,
+  event: ChatStreamEvent,
+): Promise<void> {
+  if (!writer) return;
+  try {
+    await writer.write(event);
+  } catch {
+    /* swallow */
+  }
+}
 
 /** Group nodes by topological level. Tasks in the same level can run in parallel. */
 function groupByLevel(tasks: TaskNode[]): TaskNode[][] {
@@ -128,9 +145,11 @@ async function executeOne(
   task: TaskNode,
   outputs: Map<string, unknown>,
   toolExecCtx: { requestContext: unknown },
+  writer: { write: (data: unknown) => Promise<void> } | undefined,
 ): Promise<TaskResult> {
   const tool = TOOL_REGISTRY[task.toolName];
   if (!tool) {
+    logger.warn(`[tool] unknown name=${task.toolName} task=${task.id}`);
     return {
       taskId: task.id,
       toolName: task.toolName,
@@ -139,6 +158,13 @@ async function executeOne(
       error: `Unknown tool: ${task.toolName}`,
     };
   }
+  await emit(writer, {
+    type: 'tool_started',
+    taskId: task.id,
+    toolName: task.toolName,
+    taskTitle: task.taskTitle,
+  });
+  const t0 = Date.now();
   try {
     const rawInputs = parseInputs(task.inputs);
     const inputs = resolveInputs(rawInputs, outputs);
@@ -147,6 +173,17 @@ async function executeOne(
     // (NOT from inputs) so the orchestrator never has the chance to forget,
     // override, or be tricked into leaking cross-tenant data.
     const output = await tool.execute(inputs, toolExecCtx);
+    const durationMs = Date.now() - t0;
+    logger.log(
+      `[tool] name=${task.toolName} task=${task.id} status=ok duration=${durationMs}ms`,
+    );
+    await emit(writer, {
+      type: 'tool_completed',
+      taskId: task.id,
+      toolName: task.toolName,
+      status: 'completed',
+      durationMs,
+    });
     return {
       taskId: task.id,
       toolName: task.toolName,
@@ -154,12 +191,25 @@ async function executeOne(
       output,
     };
   } catch (err) {
+    const durationMs = Date.now() - t0;
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error(
+      `[tool] name=${task.toolName} task=${task.id} status=fail duration=${durationMs}ms err=${errorMessage}`,
+    );
+    await emit(writer, {
+      type: 'tool_completed',
+      taskId: task.id,
+      toolName: task.toolName,
+      status: 'failed',
+      durationMs,
+      error: errorMessage,
+    });
     return {
       taskId: task.id,
       toolName: task.toolName,
       status: 'failed',
       output: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage,
     };
   }
 }
@@ -168,7 +218,7 @@ export const resolutionStep = createStep({
   id: 'lease-resolution-step',
   inputSchema: dagStateSchema,
   outputSchema: dagStateSchema,
-  execute: async ({ inputData, requestContext }) => {
+  execute: async ({ inputData, requestContext, writer }) => {
     const state = inputData as DagState;
     const graph = state.taskGraph ?? [];
     if (state.isComplete || graph.length === 0) {
@@ -205,10 +255,20 @@ export const resolutionStep = createStep({
             error: 'Upstream dependency failed',
           }),
         );
+      for (const s of skipped) {
+        await emit(writer, {
+          type: 'tool_completed',
+          taskId: s.taskId,
+          toolName: s.toolName,
+          status: 'skipped',
+          durationMs: 0,
+          error: s.error,
+        });
+      }
       newResults.push(...skipped);
 
       const results = await Promise.all(
-        runnable.map((t) => executeOne(t, outputsById, toolCtx)),
+        runnable.map((t) => executeOne(t, outputsById, toolCtx, writer)),
       );
       for (const r of results) {
         newResults.push(r);

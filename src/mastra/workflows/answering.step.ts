@@ -6,6 +6,19 @@ import {
   type AnsweringOutput,
   type DagState,
 } from './schemas';
+import type { ChatStreamEvent } from '../../chat/chat-stream.types';
+
+async function emit(
+  writer: { write: (data: unknown) => Promise<void> } | undefined,
+  event: ChatStreamEvent,
+): Promise<void> {
+  if (!writer) return;
+  try {
+    await writer.write(event);
+  } catch {
+    /* swallow */
+  }
+}
 
 function describeTaskResults(state: DagState): string {
   if (state.completedTasks.length === 0) return '(no tool results)';
@@ -138,19 +151,34 @@ export const answeringStep = createStep({
   id: 'lease-answering-step',
   inputSchema: dagStateSchema,
   outputSchema: chatResponseSchema,
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, writer }) => {
     const state = inputData as DagState;
     const agent = mastra?.getAgentById('lease-answering-agent');
     if (!agent) {
-      return {
+      const offline = {
         answer: 'Sorry, the assistant is currently unavailable.',
         citations: [],
         highlightWidgets: [],
         suggestedFollowUps: [],
+      };
+      await emit(writer, {
+        type: 'final',
+        ...offline,
+        iterationsUsed: state.iteration,
+        toolsUsed: state.toolsUsed,
+      });
+      return {
+        ...offline,
         iterationsUsed: state.iteration,
         toolsUsed: state.toolsUsed,
       };
     }
+
+    await emit(writer, {
+      type: 'status',
+      stage: 'answering',
+      state: 'started',
+    });
 
     const prompt = buildPrompt(state);
 
@@ -172,6 +200,16 @@ export const answeringStep = createStep({
     // Never serve a raw zod error or "please try again" if we have data —
     // synthesize from completedTasks so the user gets something grounded.
     if (!parsed) parsed = synthesizeFromToolResults(state);
+
+    await emit(writer, {
+      type: 'final',
+      answer: parsed.answer,
+      citations: parsed.citations,
+      highlightWidgets: parsed.highlightWidgets,
+      suggestedFollowUps: parsed.suggestedFollowUps,
+      iterationsUsed: state.iteration,
+      toolsUsed: state.toolsUsed,
+    });
 
     return {
       ...parsed,
