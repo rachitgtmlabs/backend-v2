@@ -6,6 +6,18 @@ export type PropertyDocumentModel = HydratedDocument<Property> & {
   updatedAt: Date;
 };
 
+/**
+ * Single-unit vs multi-unit determines how the CAM workflow aggregates bills:
+ *  - single_unit: the property has exactly one tenant-bearing space; bills
+ *    pass straight to that unit.
+ *  - multi_unit:  the property has multiple units; each accepted bill is
+ *    allocated across occupied units using each unit's CAM rule.
+ *
+ * Existing properties migrate to `single_unit` since the unit-migration
+ * created exactly one Unit per property.
+ */
+export type PropertyKind = 'single_unit' | 'multi_unit';
+
 @Schema({ collection: 'properties', timestamps: true })
 export class Property {
   @Prop({ required: true, index: { unique: true, sparse: true } })
@@ -26,6 +38,14 @@ export class Property {
   /** Public HTTPS URL to object in GCS; not binary / not GridFS */
   @Prop({ type: String, default: null })
   thumbnail_url: string | null;
+
+  @Prop({
+    type: String,
+    enum: ['single_unit', 'multi_unit'],
+    default: 'single_unit',
+    index: true,
+  })
+  property_kind: PropertyKind;
 }
 
 export const PropertySchema = SchemaFactory.createForClass(Property);

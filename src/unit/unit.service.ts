@@ -8,6 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { Lease, LeaseDocumentModel } from '../lease/schemas/lease.schema';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -34,6 +35,8 @@ export class UnitService {
   constructor(
     @InjectModel(Unit.name)
     private unitModel: Model<UnitDocumentModel>,
+    @InjectModel(Lease.name)
+    private leaseModel: Model<LeaseDocumentModel>,
     private readonly portfolioService: PortfolioService,
     private readonly propertyService: PropertyService,
   ) {}
@@ -96,7 +99,7 @@ export class UnitService {
   async listByProperty(
     portfolioId: string,
     propertyId: string,
-  ): Promise<{ units: UnitPayload[] }> {
+  ): Promise<{ units: UnitWithLeaseSummaryPayload[] }> {
     const pf = portfolioId.trim();
     const pr = propertyId.trim();
     await this.ensurePortfolioPropertyPair(pf, pr);
@@ -106,7 +109,41 @@ export class UnitService {
       .sort({ status: 1, createdAt: 1 })
       .exec();
 
-    return { units: docs.map((d) => this.toUnitPayload(d)) };
+    // Attach the latest processed lease per unit so the UI can show the
+    // tenant + rent without a follow-up call. The Units table treats a
+    // missing `current_lease_id` as "vacant", which was wrong for any unit
+    // whose lease had been uploaded — this enrichment fixes that.
+    const unitIds = docs.map((d) => d.unitId);
+    const leases =
+      unitIds.length === 0
+        ? []
+        : await this.leaseModel
+            .find({
+              portfolio_id: pf,
+              unit_id: { $in: unitIds },
+              status: 'processed',
+            })
+            .sort({ updatedAt: -1 })
+            .lean();
+    const latestLeaseByUnit = new Map<string, (typeof leases)[number]>();
+    for (const l of leases) {
+      if (!l.unit_id) continue;
+      // First (after the -1 sort) wins → that's the most-recent lease.
+      if (!latestLeaseByUnit.has(l.unit_id)) {
+        latestLeaseByUnit.set(l.unit_id, l);
+      }
+    }
+
+    return {
+      units: docs.map((d) => {
+        const base = this.toUnitPayload(d);
+        const lease = latestLeaseByUnit.get(d.unitId);
+        return {
+          ...base,
+          ...summarizeLease(lease, d.sqft_rentable),
+        };
+      }),
+    };
   }
 
   async getOne(
@@ -141,6 +178,28 @@ export class UnitService {
     if (dto.parking_count !== undefined) doc.parking_count = dto.parking_count;
     if (dto.status !== undefined) doc.status = dto.status;
     if (dto.notes !== undefined) doc.notes = dto.notes || null;
+    if (dto.occupancy_status !== undefined) {
+      doc.occupancy_status = dto.occupancy_status;
+    }
+    if (dto.cam_allocation !== undefined) {
+      // Explicit null = clear the allocation. Otherwise patch the embedded
+      // sub-doc — engine reads this at preview/commit time.
+      if (dto.cam_allocation === null) {
+        doc.cam_allocation = null;
+      } else {
+        const p = dto.cam_allocation;
+        doc.cam_allocation = {
+          base_amount: p.base_amount,
+          base_year: p.base_year,
+          share_pct: p.share_pct,
+          exclusions: p.exclusions ?? [],
+          admin_fee_pct: p.admin_fee_pct ?? null,
+          rule_ids: p.rule_ids ?? [],
+          rule_name: p.rule_name ?? '',
+          source: p.source ?? 'manual_override',
+        };
+      }
+    }
 
     try {
       const saved = await doc.save();
@@ -318,6 +377,19 @@ export class UnitService {
       parking_count: doc.parking_count,
       status: doc.status,
       notes: doc.notes,
+      occupancy_status: doc.occupancy_status,
+      cam_allocation: doc.cam_allocation
+        ? {
+            base_amount: doc.cam_allocation.base_amount,
+            base_year: doc.cam_allocation.base_year,
+            share_pct: doc.cam_allocation.share_pct,
+            exclusions: doc.cam_allocation.exclusions ?? [],
+            admin_fee_pct: doc.cam_allocation.admin_fee_pct ?? null,
+            rule_ids: doc.cam_allocation.rule_ids ?? [],
+            rule_name: doc.cam_allocation.rule_name ?? '',
+            source: doc.cam_allocation.source,
+          }
+        : null,
       is_default_migrated: doc.is_default_migrated,
       audit: {
         created_at: doc.createdAt?.toISOString() ?? new Date().toISOString(),
@@ -388,4 +460,82 @@ function levenshtein(a: string, b: string): number {
     [prev, curr] = [curr, prev];
   }
   return prev[b.length];
+}
+
+/**
+ * Lease summary fields appended to each unit row in `listByProperty`. The
+ * frontend's `UnitWithLeaseSummary` type already expects these as optional —
+ * we just populate them now.
+ */
+export interface UnitLeaseSummaryFields {
+  current_lease_id: string | null;
+  tenant_name: string | null;
+  base_rent_annual: number | null;
+  rent_per_sqft: number | null;
+  lease_end: string | null;
+}
+
+export type UnitWithLeaseSummaryPayload = UnitPayload & UnitLeaseSummaryFields;
+
+/**
+ * Extract display-ready summary fields from the deeply-nested
+ * `lease_information.leaseInformation` shape produced by the lease analysis
+ * pipeline. Returns nulls when the lease is missing or the field is silent.
+ *
+ * - tenant_name = leaseTo.value  (the tenant entity per the analyzer prompt)
+ * - rent_per_sqft = numeric leading "$N.NN" parsed out of rentPerSqFt.value
+ * - base_rent_annual = rent_per_sqft × sqft_rentable when both are known;
+ *                       otherwise null (we don't trust baseRent.value strings
+ *                       like "$34.50 per rsf per annum" enough to parse here)
+ */
+function summarizeLease(
+  lease: { leaseId: string; lease_information?: unknown } | undefined,
+  sqftRentable: number | null,
+): UnitLeaseSummaryFields {
+  if (!lease) {
+    return {
+      current_lease_id: null,
+      tenant_name: null,
+      base_rent_annual: null,
+      rent_per_sqft: null,
+      lease_end: null,
+    };
+  }
+  const info =
+    (lease.lease_information as { leaseInformation?: Record<string, any> })
+      ?.leaseInformation ?? {};
+
+  const tenant: string | null =
+    typeof info.leaseTo?.value === 'string' && info.leaseTo.value.trim()
+      ? String(info.leaseTo.value).trim()
+      : typeof info.tenant?.value === 'string' && info.tenant.value.trim()
+        ? String(info.tenant.value).trim()
+        : null;
+
+  const rentPerSqft = parseMoneyLeading(info.rentPerSqFt?.value);
+  const baseRentAnnual =
+    rentPerSqft != null && sqftRentable != null && sqftRentable > 0
+      ? Math.round(rentPerSqft * sqftRentable * 100) / 100
+      : null;
+
+  return {
+    current_lease_id: lease.leaseId,
+    tenant_name: tenant,
+    base_rent_annual: baseRentAnnual,
+    rent_per_sqft: rentPerSqft,
+    // Lease end date isn't reliably stored as ISO on this schema — leaseTo is
+    // the tenant entity in the current analyzer output. Leave null and let
+    // the UI fall back to "—" until the analyzer surfaces a clean end_date.
+    lease_end: null,
+  };
+}
+
+/** Parse "$34.50" / "$34.50 per rsf" → 34.5. Returns null on failure. */
+function parseMoneyLeading(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  const m = s.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
 }

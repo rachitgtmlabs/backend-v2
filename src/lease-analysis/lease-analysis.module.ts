@@ -13,5 +13,7 @@ import { OcrExtractionBridgeService } from './ocr-extraction-bridge.service';
     GroqLeaseAnalysisService,
     LeaseAnalysisService,
   ],
+  // Exported so CamModule can reuse the OCR bridge for bill uploads.
+  exports: [OcrExtractionBridgeService],
 })
 export class LeaseAnalysisModule {}

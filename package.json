@@ -9,7 +9,10 @@
     "start:prod": "node dist/main",
     "migrate:property-portfolio-link": "tsx scripts/migrate-property-portfolio-link.ts",
     "migrate:organizations": "tsx scripts/backfill-organizations.ts",
-    "migrate:units": "tsx scripts/migrate-units.ts"
+    "migrate:units": "tsx scripts/migrate-units.ts",
+    "migrate:cam-phase1": "tsx scripts/migrate-cam-phase1.ts",
+    "verify:cam-engine": "tsx scripts/verify-cam-engine.ts",
+    "verify:cam-integration": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/verify-cam-integration.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

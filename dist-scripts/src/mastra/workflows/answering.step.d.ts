@@ -1,0 +1,1 @@
+export declare const answeringStep: import("@mastra/core/workflows").Step<"lease-answering-step", any, InferPublicSchema<TInputSchema>, InferPublicSchema<TOutputSchema>, InferPublicSchema<TResumeSchema>, InferPublicSchema<TSuspendSchema>, import("@mastra/core/workflows").DefaultEngineType, InferPublicSchema<TRequestContextSchema>>;
