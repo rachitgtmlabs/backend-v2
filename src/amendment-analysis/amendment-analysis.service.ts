@@ -13,6 +13,10 @@ import { STREAM_SECTION_ORDER } from '../lease-analysis/lease-analysis.mocks';
 import { OPERATIONAL_GUARDRAILS_TOPIC_KEYS } from '../lease-analysis/lease-analysis-json-schemas';
 import { GroqAmendmentAnalysisService } from './groq-amendment-analysis.service';
 import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bridge.service';
+import {
+  runWithConcurrency,
+  SECTION_CONCURRENCY,
+} from '../common/run-with-concurrency';
 
 export interface PreviousAnalysis {
   executiveSummary?: unknown;
@@ -78,64 +82,69 @@ export class AmendmentAnalysisService {
     res.socket?.setNoDelay(true);
     res.write('\n');
 
-    // Process each section, extracting delta by comparing against previous version
-    for (const section of STREAM_SECTION_ORDER) {
-      try {
-        const previousSectionJson = previousAnalysis[section] ?? {};
-        const raw =
-          section === 'operationalGuardrails'
-            ? await this.groq.extractOperationalGuardrailsDelta(ocrText, previousSectionJson)
-            : await this.groq.extractSectionDelta(section, ocrText, {
-                previousSectionJson,
-              });
-        const data =
-          section === 'operationalGuardrails'
-            ? this.pruneEmptyProvisionTopics(raw)
-            : raw;
-        res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
-        (res as any).flush?.();
-      } catch (err) {
-        this.logger.error(`Groq failed for amendment ${section}`, err);
-        const message = err instanceof Error ? err.message : 'LLM request failed';
-
-        res.write(
-          JSON.stringify({
-            error: 'groq_failed',
-            section,
-            message,
-          }) + '\n',
-        );
-        (res as any).flush?.();
-        res.end();
-        return;
-      }
-    }
-
-    // Process CAM review delta
-    try {
-      const previousCamJson = previousAnalysis.camReview ?? {};
-      const camData = await this.groq.extractCamReviewDelta(
-        ocrText,
-        previousCamJson,
-      );
-      res.write(
-        JSON.stringify({ section: 'camReview', data: camData, isDelta: true }) + '\n',
-      );
+    const writeSection = (section: string, data: unknown): void => {
+      res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
       (res as any).flush?.();
-    } catch (err) {
-      this.logger.error('Groq failed for amendment camReview', err);
+    };
+    const writeSectionError = (section: string, err: unknown): void => {
+      this.logger.error(`Groq failed for amendment ${section}`, err);
       const message = err instanceof Error ? err.message : 'LLM request failed';
       res.write(
-        JSON.stringify({
-          error: 'groq_failed',
-          section: 'camReview',
-          message,
-        }) + '\n',
+        JSON.stringify({ error: 'groq_failed', section, message }) + '\n',
       );
       (res as any).flush?.();
-      res.end();
-      return;
-    }
+    };
+
+    // Announce the total section count up front so the frontend progress bar
+    // has an accurate denominator (each section/error line below is one tick).
+    const sectionNames = [...STREAM_SECTION_ORDER, 'camReview'];
+    res.write(
+      JSON.stringify({ meta: true, totalSections: sectionNames.length, sections: sectionNames }) +
+        '\n',
+    );
+    (res as any).flush?.();
+
+    // Each section's delta depends only on the OCR text + its own previous-
+    // analysis slice (no cross-section dependency), so run them with bounded
+    // concurrency and stream each delta as it lands. A failure in one section
+    // is isolated to its own error line — the rest still run.
+    const tasks: Array<() => Promise<void>> = STREAM_SECTION_ORDER.map(
+      (section) => async () => {
+        try {
+          const previousSectionJson = previousAnalysis[section] ?? {};
+          const raw =
+            section === 'operationalGuardrails'
+              ? await this.groq.extractOperationalGuardrailsDelta(
+                  ocrText,
+                  previousSectionJson,
+                )
+              : await this.groq.extractSectionDelta(section, ocrText, {
+                  previousSectionJson,
+                });
+          const data =
+            section === 'operationalGuardrails'
+              ? this.pruneEmptyProvisionTopics(raw)
+              : raw;
+          writeSection(section, data);
+        } catch (err) {
+          writeSectionError(section, err);
+        }
+      },
+    );
+    tasks.push(async () => {
+      try {
+        const previousCamJson = previousAnalysis.camReview ?? {};
+        const camData = await this.groq.extractCamReviewDelta(
+          ocrText,
+          previousCamJson,
+        );
+        writeSection('camReview', camData);
+      } catch (err) {
+        writeSectionError('camReview', err);
+      }
+    });
+
+    await runWithConcurrency(tasks, SECTION_CONCURRENCY);
 
     // Upload original PDF to GCS under documents/amendments/
     try {

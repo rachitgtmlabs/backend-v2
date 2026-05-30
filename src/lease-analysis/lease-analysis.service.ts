@@ -15,6 +15,10 @@ import { STREAM_SECTION_ORDER } from './lease-analysis.mocks';
 import { OPERATIONAL_GUARDRAILS_TOPIC_KEYS } from './lease-analysis-json-schemas';
 import { GroqLeaseAnalysisService } from './groq-lease-analysis.service';
 import { OcrExtractionBridgeService } from './ocr-extraction-bridge.service';
+import {
+  runWithConcurrency,
+  SECTION_CONCURRENCY,
+} from '../common/run-with-concurrency';
 
 @Injectable()
 export class LeaseAnalysisService {
@@ -65,9 +69,15 @@ export class LeaseAnalysisService {
   }
 
   /**
-   * PDF text (PyMuPDF via Python script) → five Groq JSON extractions streamed as NDJSON.
-   * Extraction / config errors throw before the response is committed; Groq errors
-   * emit a final `{ error, section, message }` line (HTTP status stays 200).
+   * PDF text (PyMuPDF via Python script) → Groq JSON extractions streamed as NDJSON.
+   *
+   * Sections are extracted with bounded concurrency (SECTION_CONCURRENCY at a
+   * time) and each result is streamed as soon as it resolves, so lines arrive
+   * out of order — the frontend keys off the `section` field, not arrival
+   * order. Extraction / config errors throw before the response is committed;
+   * a Groq failure in one section emits a `{ error, section, message }` line
+   * for that section only and the remaining sections continue (HTTP status
+   * stays 200).
    */
   async streamNdjsonLeaseAnalysis(
     file: Express.Multer.File,
@@ -108,57 +118,59 @@ export class LeaseAnalysisService {
     res.socket?.setNoDelay(true);
     res.write('\n');
 
-    for (const section of STREAM_SECTION_ORDER) {
-      try {
-        const raw =
-          section === 'operationalGuardrails'
-            ? await this.groq.extractOperationalGuardrailsJson(ocrText)
-            : await this.groq.extractSectionJson(section, ocrText);
-        const data =
-          section === 'operationalGuardrails'
-            ? this.pruneEmptyProvisionTopics(raw)
-            : raw;
-        res.write(JSON.stringify({ section, data }) + '\n');
-        (res as any).flush?.();
-      } catch (err) {
-        this.logger.error(`Groq failed for ${section}`, err);
-        const message =
-          err instanceof Error ? err.message : 'LLM request failed';
-
-        res.write(
-          JSON.stringify({
-            error: 'groq_failed',
-            section,
-            message,
-          }) + '\n',
-        );
-        (res as any).flush?.();
-        res.end();
-        return;
-      }
-    }
-
-    try {
-      const camData = await this.groq.extractCamReviewJson(ocrText);
-      res.write(
-        JSON.stringify({ section: 'camReview', data: camData }) + '\n',
-      );
+    const writeSection = (section: string, data: unknown): void => {
+      res.write(JSON.stringify({ section, data }) + '\n');
       (res as any).flush?.();
-    } catch (err) {
-      this.logger.error('Groq failed for camReview', err);
+    };
+    const writeSectionError = (section: string, err: unknown): void => {
+      this.logger.error(`Groq failed for ${section}`, err);
       const message =
         err instanceof Error ? err.message : 'LLM request failed';
       res.write(
-        JSON.stringify({
-          error: 'groq_failed',
-          section: 'camReview',
-          message,
-        }) + '\n',
+        JSON.stringify({ error: 'groq_failed', section, message }) + '\n',
       );
       (res as any).flush?.();
-      res.end();
-      return;
-    }
+    };
+
+    // Announce the total section count up front so the frontend progress bar
+    // has an accurate denominator (each section/error line below is one tick).
+    const sectionNames = [...STREAM_SECTION_ORDER, 'camReview'];
+    res.write(
+      JSON.stringify({ meta: true, totalSections: sectionNames.length, sections: sectionNames }) +
+        '\n',
+    );
+    (res as any).flush?.();
+
+    // Each section is independent (derived from the same OCR text), so run them
+    // with bounded concurrency and stream each result as it lands. A single
+    // section failing is isolated to its own error line — the rest still run.
+    const tasks: Array<() => Promise<void>> = STREAM_SECTION_ORDER.map(
+      (section) => async () => {
+        try {
+          const raw =
+            section === 'operationalGuardrails'
+              ? await this.groq.extractOperationalGuardrailsJson(ocrText)
+              : await this.groq.extractSectionJson(section, ocrText);
+          const data =
+            section === 'operationalGuardrails'
+              ? this.pruneEmptyProvisionTopics(raw)
+              : raw;
+          writeSection(section, data);
+        } catch (err) {
+          writeSectionError(section, err);
+        }
+      },
+    );
+    tasks.push(async () => {
+      try {
+        const camData = await this.groq.extractCamReviewJson(ocrText);
+        writeSection('camReview', camData);
+      } catch (err) {
+        writeSectionError('camReview', err);
+      }
+    });
+
+    await runWithConcurrency(tasks, SECTION_CONCURRENCY);
 
     // Upload original PDF to GCS under documents/leases/
     try {
