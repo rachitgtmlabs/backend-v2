@@ -17,6 +17,16 @@ export class CreateLeaseDto {
   @IsString()
   property_id: string;
 
+  /**
+   * Unit id (e.g. unt_*) under the property. Optional during the rollout
+   * phase — the lease service auto-links to the property's sole active unit
+   * when omitted and the property has exactly one. Becomes required after
+   * Phase 5 of the unit rollout.
+   */
+  @IsOptional()
+  @IsString()
+  unit_id?: string;
+
   @IsIn(['draft', 'processed'])
   status: 'draft' | 'processed';
 
@@ -31,6 +41,11 @@ export class CreateLeaseDto {
 
   @IsObject()
   analysis: Record<string, unknown>;
+
+  /** GCS object path of the uploaded PDF (returned by the analysis stream). */
+  @IsOptional()
+  @IsString()
+  gcs_document_path?: string;
 
   /**
    * Optional structured amendment drafts the user authored during analysis.

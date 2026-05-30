@@ -8,12 +8,20 @@ import type { Response } from 'express';
 import type { Express } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { STREAM_SECTION_ORDER } from '../lease-analysis/lease-analysis.mocks';
+import { OPERATIONAL_GUARDRAILS_TOPIC_KEYS } from '../lease-analysis/lease-analysis-json-schemas';
 import { GroqAmendmentAnalysisService } from './groq-amendment-analysis.service';
 import { OcrExtractionBridgeService } from '../lease-analysis/ocr-extraction-bridge.service';
+import {
+  runWithConcurrency,
+  SECTION_CONCURRENCY,
+} from '../common/run-with-concurrency';
 
 export interface PreviousAnalysis {
+  executiveSummary?: unknown;
   executiveIdentity?: unknown;
+  spaceAndPremises?: unknown;
   financialStack?: unknown;
   criticalDeadlines?: unknown;
   operationalGuardrails?: unknown;
@@ -29,6 +37,7 @@ export class AmendmentAnalysisService {
   constructor(
     private readonly ocr: OcrExtractionBridgeService,
     private readonly groq: GroqAmendmentAnalysisService,
+    private readonly gcs: GcsThumbnailService,
   ) {}
 
   /**
@@ -59,66 +68,99 @@ export class AmendmentAnalysisService {
     }
 
     const traceId = `amd_${Date.now()}_${randomUUID().slice(0, 8)}`;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[AmendmentAnalysis] OCR stage complete | traceId=${traceId} | chars=${ocrText.length} | preview=${JSON.stringify(ocrText.slice(0, 120))}${ocrText.length > 120 ? '…' : ''}`,
-    );
     this.logger.log(
       `OCR text retrieved successfully traceId=${traceId} length=${ocrText.length}`,
     );
 
     this.groq.ensureConfigured();
 
+    res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');
-    res.flushHeaders?.();
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    res.socket?.setNoDelay(true);
+    res.write('\n');
 
-    // Process each section, extracting delta by comparing against previous version
-    for (const section of STREAM_SECTION_ORDER) {
-      try {
-        const previousSectionJson = previousAnalysis[section] ?? {};
-        const data = await this.groq.extractSectionDelta(section, ocrText, {
-          traceId,
-          previousSectionJson,
-        });
-        res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
-      } catch (err) {
-        this.logger.error(`Groq failed for amendment ${section}`, err);
-        const message = err instanceof Error ? err.message : 'LLM request failed';
-
-        res.write(
-          JSON.stringify({
-            error: 'groq_failed',
-            section,
-            message,
-          }) + '\n',
-        );
-        res.end();
-        return;
-      }
-    }
-
-    // Process CAM review delta
-    try {
-      const previousCamJson = previousAnalysis.camReview ?? {};
-      const camData = await this.groq.extractCamReviewDelta(ocrText, previousCamJson, {
-        traceId,
-      });
-      res.write(
-        JSON.stringify({ section: 'camReview', data: camData, isDelta: true }) + '\n',
-      );
-    } catch (err) {
-      this.logger.error('Groq failed for amendment camReview', err);
+    const writeSection = (section: string, data: unknown): void => {
+      res.write(JSON.stringify({ section, data, isDelta: true }) + '\n');
+      (res as any).flush?.();
+    };
+    const writeSectionError = (section: string, err: unknown): void => {
+      this.logger.error(`Groq failed for amendment ${section}`, err);
       const message = err instanceof Error ? err.message : 'LLM request failed';
       res.write(
-        JSON.stringify({
-          error: 'groq_failed',
-          section: 'camReview',
-          message,
-        }) + '\n',
+        JSON.stringify({ error: 'groq_failed', section, message }) + '\n',
       );
-      res.end();
-      return;
+      (res as any).flush?.();
+    };
+
+    // Announce the total section count up front so the frontend progress bar
+    // has an accurate denominator (each section/error line below is one tick).
+    const sectionNames = [...STREAM_SECTION_ORDER, 'camReview'];
+    res.write(
+      JSON.stringify({ meta: true, totalSections: sectionNames.length, sections: sectionNames }) +
+        '\n',
+    );
+    (res as any).flush?.();
+
+    // Each section's delta depends only on the OCR text + its own previous-
+    // analysis slice (no cross-section dependency), so run them with bounded
+    // concurrency and stream each delta as it lands. A failure in one section
+    // is isolated to its own error line — the rest still run.
+    const tasks: Array<() => Promise<void>> = STREAM_SECTION_ORDER.map(
+      (section) => async () => {
+        try {
+          const previousSectionJson = previousAnalysis[section] ?? {};
+          const raw =
+            section === 'operationalGuardrails'
+              ? await this.groq.extractOperationalGuardrailsDelta(
+                  ocrText,
+                  previousSectionJson,
+                )
+              : await this.groq.extractSectionDelta(section, ocrText, {
+                  previousSectionJson,
+                });
+          const data =
+            section === 'operationalGuardrails'
+              ? this.pruneEmptyProvisionTopics(raw)
+              : raw;
+          writeSection(section, data);
+        } catch (err) {
+          writeSectionError(section, err);
+        }
+      },
+    );
+    tasks.push(async () => {
+      try {
+        const previousCamJson = previousAnalysis.camReview ?? {};
+        const camData = await this.groq.extractCamReviewDelta(
+          ocrText,
+          previousCamJson,
+        );
+        writeSection('camReview', camData);
+      } catch (err) {
+        writeSectionError('camReview', err);
+      }
+    });
+
+    await runWithConcurrency(tasks, SECTION_CONCURRENCY);
+
+    // Upload original PDF to GCS under documents/amendments/
+    try {
+      const gcsPath = await this.gcs.uploadDocument(
+        'amendments',
+        buffer,
+        file.originalname || file.filename || 'amendment.pdf',
+        file.mimetype || 'application/pdf',
+      );
+      if (gcsPath) {
+        res.write(
+          JSON.stringify({ section: 'document_stored', data: { gcs_path: gcsPath } }) + '\n',
+        );
+      }
+    } catch (err) {
+      this.logger.warn('GCS document upload failed (non-fatal)', err);
     }
 
     res.end();
@@ -143,5 +185,44 @@ export class AmendmentAnalysisService {
       return fs.readFile(file.path);
     }
     throw new BadRequestException('Unable to read uploaded file');
+  }
+
+  /**
+   * Same prune logic as LeaseAnalysisService — strip operationalGuardrails
+   * topics where every value field is empty. In amendment delta mode this
+   * matters even more: an empty topic means "no change in this clause", and
+   * shipping it as `{ synopsis: { value: "" }, ... }` would clobber the
+   * Tenant's existing values on the frontend's delta merge.
+   */
+  private pruneEmptyProvisionTopics(raw: unknown): unknown {
+    if (!raw || typeof raw !== 'object') return raw;
+    const source = raw as Record<string, unknown>;
+    const pruned: Record<string, unknown> = {};
+    for (const key of OPERATIONAL_GUARDRAILS_TOPIC_KEYS) {
+      const topic = source[key];
+      if (this.provisionTopicIsEmpty(topic)) continue;
+      pruned[key] = topic;
+    }
+    for (const [key, value] of Object.entries(source)) {
+      if ((OPERATIONAL_GUARDRAILS_TOPIC_KEYS as readonly string[]).includes(key))
+        continue;
+      pruned[key] = value;
+    }
+    return pruned;
+  }
+
+  private provisionTopicIsEmpty(topic: unknown): boolean {
+    if (!topic || typeof topic !== 'object') return true;
+    const t = topic as Record<string, unknown>;
+    const read = (field: unknown): string => {
+      if (!field || typeof field !== 'object') return '';
+      const v = (field as Record<string, unknown>).value;
+      return typeof v === 'string' ? v.trim() : '';
+    };
+    return (
+      read(t.synopsis) === '' &&
+      read(t.keyParameters) === '' &&
+      read(t.narrative) === ''
+    );
   }
 }

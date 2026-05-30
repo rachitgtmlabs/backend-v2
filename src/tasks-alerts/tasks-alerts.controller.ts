@@ -9,12 +9,15 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { CreateTaskAlertDto } from './dto/create-task-alert.dto';
 import { PatchTaskAlertDto } from './dto/patch-task-alert.dto';
 import { TasksAlertsService } from './tasks-alerts.service';
 
 @Controller('properties/:propertyId/tasks-alerts')
+@UseGuards(PortfolioAccessGuard)
 export class TasksAlertsController {
   constructor(private readonly tasksAlertsService: TasksAlertsService) {}
 

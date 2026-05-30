@@ -9,5 +9,5 @@ __pycache__/
 *.py[cod]
 .python-version
 application_default_credentials.json
-# Lease analysis Groq/OCR debug dumps (see LEASE_ANALYSIS_TRACE_FILES)
+# Optional local debug dumps
 debug/

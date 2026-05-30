@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { Amendment, AmendmentDocumentModel } from '../lease/schemas/amendment.schema';
 import { Lease, LeaseDocumentModel } from '../lease/schemas/lease.schema';
 import { Property, PropertyDocumentModel } from '../property/schemas/property.schema';
@@ -13,6 +18,7 @@ import {
   TaskAlert,
   TaskAlertDocumentModel,
 } from '../tasks-alerts/schemas/task-alert.schema';
+import { Unit, UnitDocumentModel } from '../unit/schemas/unit.schema';
 import { CreatePortfolioDto } from './dto/create-portfolio.dto';
 import {
   DocumentRequirement,
@@ -26,6 +32,17 @@ function newPortfolioId(): string {
 
 function newDocRequirementId(): string {
   return `doc_req_${randomBytes(4).toString('hex')}`;
+}
+
+/**
+ * Org-scoped filter. Every read is gated by the caller's organization_id —
+ * an unauthenticated/orgless caller matches nothing (fail closed).
+ * `created_by` is retained on the document for attribution but is no longer
+ * part of the access decision.
+ */
+function orgFilter(orgId?: string): Record<string, unknown> {
+  if (!orgId) return { _id: null };
+  return { organization_id: orgId };
 }
 
 @Injectable()
@@ -43,9 +60,49 @@ export class PortfolioService {
     private taskAlertModel: Model<TaskAlertDocumentModel>,
     @InjectModel(PropertyAlert.name)
     private propertyAlertModel: Model<PropertyAlertDocumentModel>,
+    @InjectModel(Unit.name)
+    private unitModel: Model<UnitDocumentModel>,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
-  async create(dto: CreatePortfolioDto) {
+  /** Portfolio ids owned by an org. Used to org-scope lease/amendment counts
+   * (those documents carry only portfolio_id, not organization_id). */
+  async listPortfolioIdsForOrg(orgId?: string): Promise<string[]> {
+    const rows = await this.portfolioModel
+      .find(orgFilter(orgId))
+      .select('portfolioId')
+      .lean()
+      .exec();
+    return rows.map((r) => r.portfolioId);
+  }
+
+  /** Number of portfolios in an org. */
+  countByOrg(orgId?: string): Promise<number> {
+    return this.portfolioModel.countDocuments(orgFilter(orgId)).exec();
+  }
+
+  /** Enforce the org's maxPortfolios quota. A negative limit means unlimited. */
+  private async assertPortfolioQuota(orgId: string): Promise<void> {
+    const org = await this.organizationsService.findByOrgId(orgId);
+    const limit = org?.maxPortfolios ?? -1;
+    if (limit < 0) return;
+    const count = await this.countByOrg(orgId);
+    if (count >= limit) {
+      throw new ForbiddenException(
+        `Portfolio limit reached for this organization (max ${limit}).`,
+      );
+    }
+  }
+
+  async create(
+    dto: CreatePortfolioDto,
+    userId: string | undefined,
+    orgId: string | undefined,
+  ) {
+    if (!orgId) {
+      throw new NotFoundException('Organization context required');
+    }
+    await this.assertPortfolioQuota(orgId);
     const p = dto.portfolio;
     const portfolioId = newPortfolioId();
     const document_requirements: DocumentRequirement[] =
@@ -69,25 +126,63 @@ export class PortfolioService {
         source: p.attributes?.source ?? 'ui',
       },
       status: 'active',
-      created_by: 'user_admin',
+      created_by: userId || 'unknown',
+      organization_id: orgId,
     });
 
     return this.toResponse(doc);
   }
 
-  async findAll() {
+  async findAll(orgId?: string) {
     const docs = await this.portfolioModel
-      .find()
+      .find(orgFilter(orgId))
       .sort({ createdAt: -1 })
       .exec();
     const ids = docs.map((d) => d.portfolioId);
-    const countByPortfolio = await this.countPropertiesByPortfolioIds(ids);
+    const [countByPortfolio, alertStatusByPortfolio] = await Promise.all([
+      this.countPropertiesByPortfolioIds(ids),
+      this.computeAlertStatusByPortfolioIds(ids),
+    ]);
     return {
       portfolios: docs.map((doc) => {
         const n = countByPortfolio.get(doc.portfolioId) ?? 0;
-        return this.toResponse(doc, n).portfolio;
+        const alertStatus = alertStatusByPortfolio.get(doc.portfolioId) ?? 'ok';
+        return { ...this.toResponse(doc, n).portfolio, alert_status: alertStatus };
       }),
     };
+  }
+
+  /**
+   * For each portfolio, compute a single status based on unresolved task alerts:
+   * - 'critical' if any unresolved critical alert exists
+   * - 'high' if any unresolved high/medium alert exists
+   * - 'ok' otherwise
+   */
+  private async computeAlertStatusByPortfolioIds(
+    portfolioIds: string[],
+  ): Promise<Map<string, 'critical' | 'high' | 'ok'>> {
+    const map = new Map<string, 'critical' | 'high' | 'ok'>();
+    if (portfolioIds.length === 0) return map;
+
+    const alerts = await this.taskAlertModel
+      .find({
+        portfolio_id: { $in: portfolioIds },
+        is_resolved: false,
+        severity: { $in: ['critical', 'high', 'medium'] },
+      })
+      .select({ portfolio_id: 1, severity: 1, _id: 0 })
+      .lean()
+      .exec();
+
+    for (const alert of alerts) {
+      const current = map.get(alert.portfolio_id);
+      if (alert.severity === 'critical') {
+        map.set(alert.portfolio_id, 'critical');
+      } else if (current !== 'critical') {
+        map.set(alert.portfolio_id, 'high');
+      }
+    }
+    return map;
   }
 
   /** Batch property counts for list views (one aggregation for all portfolios). */
@@ -131,9 +226,24 @@ export class PortfolioService {
     return n > 0;
   }
 
-  async findOne(portfolioIdRaw: string) {
+  /** True if the portfolio belongs to the caller's organization. */
+  async canUserAccess(
+    portfolioIdRaw: string,
+    orgId?: string,
+  ): Promise<boolean> {
+    if (!orgId) return false;
     const portfolioId = portfolioIdRaw.trim();
-    const doc = await this.portfolioModel.findOne({ portfolioId }).exec();
+    const n = await this.portfolioModel
+      .countDocuments({ portfolioId, ...orgFilter(orgId) })
+      .exec();
+    return n > 0;
+  }
+
+  async findOne(portfolioIdRaw: string, orgId?: string) {
+    const portfolioId = portfolioIdRaw.trim();
+    const doc = await this.portfolioModel
+      .findOne({ portfolioId, ...orgFilter(orgId) })
+      .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
@@ -146,9 +256,11 @@ export class PortfolioService {
     };
   }
 
-  async update(portfolioIdRaw: string, dto: CreatePortfolioDto) {
+  async update(portfolioIdRaw: string, dto: CreatePortfolioDto, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    const doc = await this.portfolioModel.findOne({ portfolioId }).exec();
+    const doc = await this.portfolioModel
+      .findOne({ portfolioId, ...orgFilter(orgId) })
+      .exec();
     if (!doc) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
@@ -189,9 +301,9 @@ export class PortfolioService {
    * Items deleted when removing a portfolio (leases + amendments).
    * Other collections (tasks, property alerts, properties) are removed without listing every row.
    */
-  async getDeletionImpact(portfolioIdRaw: string) {
+  async getDeletionImpact(portfolioIdRaw: string, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.existsByPortfolioId(portfolioId))) {
+    if (!(await this.canUserAccess(portfolioId, orgId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
@@ -239,9 +351,9 @@ export class PortfolioService {
     };
   }
 
-  async remove(portfolioIdRaw: string) {
+  async remove(portfolioIdRaw: string, orgId?: string) {
     const portfolioId = portfolioIdRaw.trim();
-    if (!(await this.existsByPortfolioId(portfolioId))) {
+    if (!(await this.canUserAccess(portfolioId, orgId))) {
       throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
     }
 
@@ -251,6 +363,7 @@ export class PortfolioService {
       .exec();
     await this.amendmentModel.deleteMany({ portfolio_id: portfolioId }).exec();
     await this.leaseModel.deleteMany({ portfolio_id: portfolioId }).exec();
+    await this.unitModel.deleteMany({ portfolio_id: portfolioId }).exec();
     await this.propertyModel
       .deleteMany({
         $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],

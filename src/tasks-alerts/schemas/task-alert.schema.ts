@@ -25,6 +25,13 @@ export class TaskAlert {
   @Prop({ required: true, index: true })
   lease_id: string;
 
+  /**
+   * Unit (unt_*) the lease belongs to. Optional during the unit-rollout
+   * migration; required afterward. Inherited from the lease.
+   */
+  @Prop({ type: String, index: true, default: null })
+  unit_id: string | null;
+
   @Prop({ required: true, enum: ['alert', 'task'] })
   category: 'alert' | 'task';
 
@@ -53,6 +60,12 @@ export const TaskAlertSchema = SchemaFactory.createForClass(TaskAlert);
 TaskAlertSchema.index({
   portfolio_id: 1,
   property_id: 1,
+  lease_id: 1,
+  category: 1,
+});
+TaskAlertSchema.index({
+  portfolio_id: 1,
+  unit_id: 1,
   lease_id: 1,
   category: 1,
 });

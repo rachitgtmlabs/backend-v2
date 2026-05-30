@@ -14,6 +14,8 @@ if (gac && !isAbsolute(gac)) {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useBodyParser('json', { limit: '50mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '50mb' });
   app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/static/' });
   app.enableCors({
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',

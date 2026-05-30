@@ -14,7 +14,10 @@ import { AmendmentAnalysisService, PreviousAnalysis } from './amendment-analysis
 
 interface AmendmentAnalysisRequestBody {
   lease_id: string;
-  previous_analysis: string; // JSON stringified PreviousAnalysis
+  previous_analysis: any; // Can be JSON string or object
+  file_base64?: string;
+  file_name?: string;
+  file_mimetype?: string;
 }
 
 @Controller('amendment-analysis')
@@ -30,36 +33,59 @@ export class AmendmentAnalysisController {
     @Body() body: AmendmentAnalysisRequestBody,
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
-    const bytes = file?.size ?? file?.buffer?.length ?? 0;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[AmendmentAnalysisController] POST /v1/amendment-analysis/stream multipart field=assets bytes=${bytes} lease_id=${body.lease_id}`,
-    );
-    this.logger.log(`amendment-analysis stream request bytes=${bytes} lease_id=${body.lease_id}`);
+    let fileObj = file;
 
-    if (!file?.buffer && !file?.path) {
+    // Support JSON requests with base64-encoded files to bypass HTTP/3 multipart bugs in Firefox/GFE
+    if (!fileObj && body?.file_base64) {
+      try {
+        const buffer = Buffer.from(body.file_base64, 'base64');
+        fileObj = {
+          buffer,
+          originalname: body.file_name || 'amendment.pdf',
+          mimetype: body.file_mimetype || 'application/pdf',
+          fieldname: 'assets',
+          encoding: '7bit',
+          size: buffer.length,
+          stream: null as any,
+          destination: '',
+          filename: body.file_name || 'amendment.pdf',
+          path: '',
+        } as Express.Multer.File;
+      } catch (err) {
+        throw new BadRequestException('Invalid base64 payload for file_base64');
+      }
+    }
+
+    const bytes = fileObj?.size ?? fileObj?.buffer?.length ?? 0;
+    this.logger.log(`amendment-analysis stream request bytes=${bytes} lease_id=${body?.lease_id}`);
+
+    if (!fileObj?.buffer && !fileObj?.path) {
       throw new BadRequestException(
-        'Multipart field "assets" with a file is required',
+        'Multipart field "assets" with a file (or JSON file_base64) is required',
       );
     }
 
-    if (!body.lease_id) {
+    if (!body?.lease_id) {
       throw new BadRequestException('lease_id is required');
     }
 
     let previousAnalysis: PreviousAnalysis = {};
     if (body.previous_analysis) {
-      try {
-        previousAnalysis = JSON.parse(body.previous_analysis);
-      } catch (err) {
-        throw new BadRequestException(
-          'previous_analysis must be valid JSON',
-        );
+      if (typeof body.previous_analysis === 'string') {
+        try {
+          previousAnalysis = JSON.parse(body.previous_analysis);
+        } catch (err) {
+          throw new BadRequestException(
+            'previous_analysis must be valid JSON',
+          );
+        }
+      } else if (typeof body.previous_analysis === 'object') {
+        previousAnalysis = body.previous_analysis;
       }
     }
 
     await this.amendmentAnalysisService.streamNdjsonAmendmentAnalysis(
-      file,
+      fileObj,
       previousAnalysis,
       res,
     );

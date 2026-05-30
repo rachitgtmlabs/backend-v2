@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,13 +8,20 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
+import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
+import { UnitService } from '../unit/unit.service';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
 import { deepMerge } from './utils/deep-merge.util';
+import {
+  buildFieldHistory,
+  type FieldHistoryPayload,
+} from './utils/field-history.util';
 
 function newLeaseId(): string {
   return `les_${randomBytes(6).toString('hex')}`;
@@ -35,9 +43,15 @@ export class LeaseService {
     private readonly portfolioService: PortfolioService,
     private readonly propertyService: PropertyService,
     private readonly tasksAlertsService: TasksAlertsService,
+    private readonly gcsThumbnail: GcsThumbnailService,
+    private readonly unitService: UnitService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
-  async create(dto: CreateLeaseDto) {
+  async create(
+    dto: CreateLeaseDto,
+    auth?: { userEmail?: string | null; orgId?: string | null },
+  ) {
     // Validate portfolio exists
     const exists = await this.portfolioService.existsByPortfolioId(
       dto.portfolio_id,
@@ -59,18 +73,102 @@ export class LeaseService {
       );
     }
 
-    // Route based on document type
+    // Route based on document type. Unit resolution differs between the two
+    // paths: main leases need an explicit or auto-resolvable unit; amendments
+    // inherit unit_id from the parent lease and ignore any caller-supplied
+    // unit_id entirely.
     if (dto.document_type === 'amendment') {
-      return this.createAmendment(dto);
-    } else {
-      return this.createLease(dto);
+      await this.assertCreateQuota(auth?.orgId ?? null, 'amendment');
+      return this.createAmendment(dto, auth?.userEmail ?? null);
     }
+
+    await this.assertCreateQuota(auth?.orgId ?? null, 'lease');
+    const unitId = await this.resolveUnitIdForNewLease(dto);
+    return this.createLease(dto, unitId);
+  }
+
+  /**
+   * Enforce the org's maxLeases / maxAmendments quota before creating a
+   * document. Leases and amendments carry only portfolio_id (no
+   * organization_id), so we count across the org's portfolios. A negative
+   * limit, or a missing org context, means "no limit".
+   */
+  private async assertCreateQuota(
+    orgId: string | null,
+    kind: 'lease' | 'amendment',
+  ): Promise<void> {
+    if (!orgId) return;
+    const org = await this.organizationsService.findByOrgId(orgId);
+    const limit =
+      kind === 'lease' ? (org?.maxLeases ?? -1) : (org?.maxAmendments ?? -1);
+    if (limit < 0) return;
+    const portfolioIds =
+      await this.portfolioService.listPortfolioIdsForOrg(orgId);
+    const model = kind === 'lease' ? this.leaseModel : this.amendmentModel;
+    const count = await model
+      .countDocuments({ portfolio_id: { $in: portfolioIds } })
+      .exec();
+    if (count >= limit) {
+      throw new ForbiddenException(
+        `${kind === 'lease' ? 'Lease' : 'Amendment'} limit reached for this organization (max ${limit}).`,
+      );
+    }
+  }
+
+  /**
+   * For a NEW main lease:
+   *   - If the caller passes `unit_id`, verify it belongs to (portfolio, property).
+   *   - Otherwise auto-link when the property has exactly one active unit.
+   *   - Else reject with 400 so the frontend can prompt the user to pick a unit.
+   *
+   * Amendments don't go through here — they inherit from the parent lease.
+   */
+  private async resolveUnitIdForNewLease(dto: CreateLeaseDto): Promise<string> {
+    const explicit = dto.unit_id?.trim();
+    if (explicit) {
+      const owned = await this.unitService.findInPortfolioProperty(
+        dto.portfolio_id,
+        dto.property_id,
+        explicit,
+      );
+      if (!owned) {
+        throw new BadRequestException({
+          message: `Unit ${explicit} does not belong to property ${dto.property_id}`,
+          code: 'UNIT_NOT_ON_PROPERTY',
+        });
+      }
+      return owned.unitId;
+    }
+
+    const sole = await this.unitService.resolveSoleActiveUnit(
+      dto.portfolio_id,
+      dto.property_id,
+    );
+    if (sole) return sole.unitId;
+
+    // Either zero units (migration miss, or property created before the
+    // dual-write phase ran) or multiple — both require an explicit choice.
+    const { units } = await this.unitService.listByProperty(
+      dto.portfolio_id,
+      dto.property_id,
+    );
+    throw new BadRequestException({
+      message:
+        units.length === 0
+          ? 'No unit exists on this property. Create a unit before saving a lease.'
+          : 'Property has multiple units; unit_id is required.',
+      code: units.length === 0 ? 'NO_UNITS_ON_PROPERTY' : 'UNIT_ID_REQUIRED',
+      units,
+    });
   }
 
   /**
    * Create an amendment for an existing lease
    */
-  private async createAmendment(dto: CreateLeaseDto) {
+  private async createAmendment(
+    dto: CreateLeaseDto,
+    userEmail: string | null,
+  ) {
     // Find the most recent lease for this property (regardless of status)
     const parentLease = await this.leaseModel
       .findOne({
@@ -88,7 +186,21 @@ export class LeaseService {
     // Calculate the new version number
     const newVersion = parentLease.amendment_version + 1;
 
-    // Create the amendment document
+    // Manual edit detection: no source PDF + an authenticated user means this
+    // amendment originated from the user editing extracted fields directly,
+    // not from uploading an amendment document. Stamp `edited_by` from the
+    // JWT identity so we can later distinguish human-touched deltas.
+    const isManualEdit =
+      !dto.gcs_document_path?.trim() && Boolean(userEmail);
+    if (isManualEdit) {
+      this.logger.log(
+        `Creating manual amendment without source file (edited_by=${userEmail})`,
+      );
+    }
+
+    // Create the amendment document. unit_id is inherited from the parent
+    // lease — never trusted from the caller — so amendments always live
+    // under the same unit as the lease they amend.
     const amendmentId = newAmendmentId();
     const amendmentDoc = await this.amendmentModel.create({
       amendmentId,
@@ -96,11 +208,14 @@ export class LeaseService {
       version: newVersion,
       portfolio_id: dto.portfolio_id,
       property_id: dto.property_id,
+      unit_id: parentLease.unit_id ?? null,
       status: dto.status,
       file_name: dto.file_name,
       lease_information: dto.lease_information,
       analysis: dto.analysis,
+      gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
+      edited_by: isManualEdit ? userEmail : null,
     });
 
     // Increment amendment_version on the parent lease
@@ -119,6 +234,7 @@ export class LeaseService {
         version: amendmentDoc.version,
         portfolio_id: amendmentDoc.portfolio_id,
         property_id: amendmentDoc.property_id,
+        unit_id: amendmentDoc.unit_id ?? null,
         status: amendmentDoc.status,
         file_name: amendmentDoc.file_name,
         audit: {
@@ -134,27 +250,25 @@ export class LeaseService {
   }
 
   /**
-   * Create a new main lease
+   * Create a new main lease. The caller has already resolved `unitId` (either
+   * from the DTO or by auto-link); both Lease and any superseded leases for
+   * the same unit are kept consistent.
    */
-  private async createLease(dto: CreateLeaseDto) {
-    // Check if any lease exists for this property/portfolio
+  private async createLease(dto: CreateLeaseDto, unitId: string) {
+    // Supersede any prior processed/draft leases on the SAME unit. Previously
+    // this was scoped by property; with units, two leases on different units
+    // of the same property can both be active simultaneously, so the
+    // supersede pass must be unit-scoped.
     const existingLease = await this.leaseModel
-      .findOne({
-        portfolio_id: dto.portfolio_id,
-        property_id: dto.property_id,
-      })
+      .findOne({ unit_id: unitId })
       .sort({ updatedAt: -1 })
       .exec();
 
-    // If a lease exists, set it and all its amendments to draft
     if (existingLease) {
-      // Set existing lease to draft
       await this.leaseModel.updateOne(
         { leaseId: existingLease.leaseId },
         { status: 'draft' },
       );
-
-      // Set all amendments for that lease to draft
       await this.amendmentModel.updateMany(
         { lease_id: existingLease.leaseId },
         { status: 'draft' },
@@ -167,11 +281,13 @@ export class LeaseService {
       leaseId,
       portfolio_id: dto.portfolio_id,
       property_id: dto.property_id,
+      unit_id: unitId,
       status: dto.status,
       file_name: dto.file_name,
       lease_information: dto.lease_information,
       analysis: dto.analysis,
       amendment_version: 0,
+      gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
     });
 
@@ -180,6 +296,7 @@ export class LeaseService {
         dto.portfolio_id,
         dto.property_id,
         leaseId,
+        unitId,
       );
     } catch (err) {
       this.logger.warn(
@@ -194,6 +311,7 @@ export class LeaseService {
         id: doc.leaseId,
         portfolio_id: doc.portfolio_id,
         property_id: doc.property_id,
+        unit_id: doc.unit_id,
         status: doc.status,
         file_name: doc.file_name,
         amendment_version: doc.amendment_version,
@@ -240,6 +358,19 @@ export class LeaseService {
       );
     }
 
+    // Fetch all amendments so the caller can render them in the review panel
+    const amendmentDocs = await this.amendmentModel
+      .find({ lease_id: doc.leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    // Flag the multi-unit case so legacy consumers can decide to redirect the
+    // user to a unit picker instead of silently showing one unit's lease.
+    const multiUnit = await this.unitService
+      .listByProperty(portfolioId, propertyId)
+      .then((res) => res.units.filter((u) => u.status === 'active').length > 1)
+      .catch(() => false);
+
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;
     return {
@@ -247,8 +378,10 @@ export class LeaseService {
         id: doc.leaseId,
         portfolio_id: doc.portfolio_id,
         property_id: doc.property_id,
+        unit_id: doc.unit_id ?? null,
         status: doc.status,
         file_name: doc.file_name,
+        gcs_document_path: doc.gcs_document_path ?? null,
         lease_information: doc.lease_information,
         analysis: doc.analysis,
         audit: {
@@ -259,6 +392,68 @@ export class LeaseService {
           self: `/v1/leases/${doc.leaseId}`,
         },
       },
+      amendments: amendmentDocs.map((a) => ({
+        id: a.amendmentId,
+        version: a.version,
+        file_name: a.file_name,
+        gcs_document_path: a.gcs_document_path ?? null,
+        drafted_amendments: a.drafted_amendments ?? [],
+      })),
+      multi_unit: multiUnit,
+    };
+  }
+
+  /**
+   * By-unit variant of `getLatestForPortfolioProperty` — returns the most
+   * recently updated lease for a unit, plus all its amendments. Phase 2:
+   * frontend continues to call the property variant; this method is wired
+   * for the Phase 3 cutover.
+   */
+  async getLatestForPortfolioUnit(portfolioId: string, unitId: string) {
+    const unit = await this.unitService.getOne(portfolioId, unitId);
+
+    const doc = await this.leaseModel
+      .findOne({ portfolio_id: portfolioId, unit_id: unit.unit.id })
+      .sort({ updatedAt: -1 })
+      .exec();
+
+    if (!doc) {
+      throw new NotFoundException('No saved lease analysis for this unit.');
+    }
+
+    const amendmentDocs = await this.amendmentModel
+      .find({ lease_id: doc.leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    const createdAt = doc.createdAt;
+    const updatedAt = doc.updatedAt;
+    return {
+      lease: {
+        id: doc.leaseId,
+        portfolio_id: doc.portfolio_id,
+        property_id: doc.property_id,
+        unit_id: doc.unit_id ?? null,
+        status: doc.status,
+        file_name: doc.file_name,
+        gcs_document_path: doc.gcs_document_path ?? null,
+        lease_information: doc.lease_information,
+        analysis: doc.analysis,
+        audit: {
+          created_at: createdAt?.toISOString() ?? new Date().toISOString(),
+          updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),
+        },
+        links: {
+          self: `/v1/leases/${doc.leaseId}`,
+        },
+      },
+      amendments: amendmentDocs.map((a) => ({
+        id: a.amendmentId,
+        version: a.version,
+        file_name: a.file_name,
+        gcs_document_path: a.gcs_document_path ?? null,
+        drafted_amendments: a.drafted_amendments ?? [],
+      })),
     };
   }
 
@@ -289,6 +484,65 @@ export class LeaseService {
         .exec(),
       this.amendmentModel
         .find({ portfolio_id: portfolioId, property_id: propertyId })
+        .sort({ updatedAt: -1 })
+        .select(['amendmentId', 'file_name', 'status', 'updatedAt'])
+        .lean()
+        .exec(),
+    ]);
+
+    type Item = {
+      id: string;
+      kind: 'lease' | 'amendment';
+      file_name: string;
+      status: string;
+      updated_at: string;
+    };
+
+    const leaseItems: Item[] = leaseRows.map((row) => ({
+      id: row.leaseId,
+      kind: 'lease' as const,
+      file_name: row.file_name,
+      status: row.status,
+      updated_at: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    }));
+
+    const amendmentItems: Item[] = amendmentRows.map((row) => ({
+      id: row.amendmentId,
+      kind: 'amendment' as const,
+      file_name: row.file_name,
+      status: row.status,
+      updated_at: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    }));
+
+    const all = [...leaseItems, ...amendmentItems];
+    const byUpdatedDesc = (a: Item, b: Item) =>
+      b.updated_at.localeCompare(a.updated_at);
+
+    const active = all
+      .filter((i) => i.status === 'processed')
+      .sort(byUpdatedDesc);
+    const draft = all.filter((i) => i.status === 'draft').sort(byUpdatedDesc);
+
+    return { active, draft };
+  }
+
+  /**
+   * By-unit variant of `listDocumentsForPortfolioProperty`. Same grouping,
+   * scoped to one unit.
+   */
+  async listDocumentsForPortfolioUnit(portfolioId: string, unitId: string) {
+    // Verifies the unit belongs to the portfolio.
+    await this.unitService.getOne(portfolioId, unitId);
+
+    const [leaseRows, amendmentRows] = await Promise.all([
+      this.leaseModel
+        .find({ portfolio_id: portfolioId, unit_id: unitId })
+        .sort({ updatedAt: -1 })
+        .select(['leaseId', 'file_name', 'status', 'updatedAt'])
+        .lean()
+        .exec(),
+      this.amendmentModel
+        .find({ portfolio_id: portfolioId, unit_id: unitId })
         .sort({ updatedAt: -1 })
         .select(['amendmentId', 'file_name', 'status', 'updatedAt'])
         .lean()
@@ -377,6 +631,7 @@ export class LeaseService {
       amendmentId: a.amendmentId,
       file_name: a.file_name,
       status: a.status,
+      gcs_document_path: a.gcs_document_path ?? null,
       changedSections: Object.keys(a.analysis || {}),
       updated_at: a.updatedAt?.toISOString() ?? new Date().toISOString(),
     }));
@@ -393,14 +648,32 @@ export class LeaseService {
         id: lease.leaseId,
         portfolio_id: lease.portfolio_id,
         property_id: lease.property_id,
+        unit_id: lease.unit_id ?? null,
         status: lease.status,
         file_name: lease.file_name,
+        gcs_document_path: lease.gcs_document_path ?? null,
         amendment_version: lease.amendment_version,
         created_at: createdAt?.toISOString() ?? new Date().toISOString(),
         updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),
       },
       amendments: amendmentHistory,
     };
+  }
+
+  /**
+   * Get effective state by unit ID (finds the latest processed lease for the
+   * unit, then merges its amendments).
+   */
+  async getEffectiveStateByUnit(portfolioId: string, unitId: string) {
+    await this.unitService.getOne(portfolioId, unitId);
+    const lease = await this.leaseModel
+      .findOne({ portfolio_id: portfolioId, unit_id: unitId, status: 'processed' })
+      .sort({ updatedAt: -1 })
+      .exec();
+    if (!lease) {
+      throw new NotFoundException('No processed lease found for this unit.');
+    }
+    return this.getEffectiveState(lease.leaseId);
   }
 
   /**
@@ -465,6 +738,73 @@ export class LeaseService {
         },
       },
     };
+  }
+
+  /**
+   * Download a stored document from GCS by its object path.
+   * The path must start with `documents/` to prevent traversal.
+   */
+  async downloadDocument(objectPath: string) {
+    if (!objectPath.startsWith('documents/')) {
+      throw new BadRequestException('Invalid document path');
+    }
+    const result = await this.gcsThumbnail.downloadFile(objectPath);
+    if (!result) {
+      throw new NotFoundException('Document not found or storage not configured');
+    }
+    return result;
+  }
+
+  /**
+   * Field-level history for the Timeline view — per tracked scalar field,
+   * lists every version (original + amendments) where the value changed.
+   * Arrays (rent schedule, milestones) are intentionally not tracked here.
+   */
+  async getFieldHistory(leaseId: string): Promise<FieldHistoryPayload> {
+    const lease = await this.leaseModel.findOne({ leaseId }).exec();
+    if (!lease) {
+      throw new NotFoundException(`Lease not found: ${leaseId}`);
+    }
+
+    const amendments = await this.amendmentModel
+      .find({ lease_id: leaseId })
+      .sort({ version: 1 })
+      .exec();
+
+    const originalEffectiveDate =
+      lease.createdAt?.toISOString() ?? new Date().toISOString();
+
+    return buildFieldHistory({
+      leaseId: lease.leaseId,
+      originalAnalysis: (lease.analysis ?? {}) as Record<string, unknown>,
+      originalEffectiveDate,
+      amendments: amendments.map((a) => ({
+        amendmentId: a.amendmentId,
+        version: a.version,
+        analysisDelta: (a.analysis ?? undefined) as
+          | Record<string, unknown>
+          | undefined,
+        effectiveDate:
+          a.createdAt?.toISOString() ?? new Date().toISOString(),
+        editedBy: a.edited_by ?? null,
+        draftedAddendums: (a.drafted_amendments ?? []).map((d) => ({
+          key: d.key,
+          riskTitle: d.riskTitle,
+          riskSeverity: d.riskSeverity,
+          resolutionLabel: d.resolutionLabel,
+          markdown: d.markdown,
+          generatedAt: d.generatedAt,
+        })),
+      })),
+      originalDraftedAddendums: (lease.drafted_amendments ?? []).map((d) => ({
+        key: d.key,
+        riskTitle: d.riskTitle,
+        riskSeverity: d.riskSeverity,
+        resolutionLabel: d.resolutionLabel,
+        markdown: d.markdown,
+        generatedAt: d.generatedAt,
+      })),
+    });
   }
 
   /**

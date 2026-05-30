@@ -101,8 +101,14 @@ export class Portfolio {
 
   @Prop({ default: 'user_admin' })
   created_by: string;
+
+  // Org that owns this portfolio. Every read filters by this; `created_by`
+  // is kept only for attribution within the org. Optional during the
+  // migration window — flipped to required once backfill completes.
+  @Prop({ index: true })
+  organization_id?: string;
 }
 
 export const PortfolioSchema = SchemaFactory.createForClass(Portfolio);
 
-PortfolioSchema.index({ createdAt: -1 });
+PortfolioSchema.index({ organization_id: 1, createdAt: -1 });

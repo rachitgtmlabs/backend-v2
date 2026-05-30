@@ -22,6 +22,14 @@ export class Lease {
   @Prop({ type: String, index: true, default: null })
   property_id: string | null;
 
+  /**
+   * Linked unit (e.g. unt_*) under this property. Optional during the
+   * Phase 1 → Phase 5 rollout; required after the unit-id backfill migration
+   * has run and the read-switch ships.
+   */
+  @Prop({ type: String, index: true, default: null })
+  unit_id: string | null;
+
   @Prop({ required: true, enum: ['draft', 'processed'] })
   status: string;
 
@@ -36,6 +44,10 @@ export class Lease {
 
   @Prop({ type: Number, default: 0, index: true })
   amendment_version: number;
+
+  /** GCS object path of the original lease PDF (e.g. documents/leases/…). */
+  @Prop({ type: String, default: null })
+  gcs_document_path: string | null;
 
   /**
    * Risk-driven amendment drafts the user authored during analysis.
@@ -56,3 +68,5 @@ LeaseSchema.index({
   updatedAt: -1,
 });
 LeaseSchema.index({ property_id: 1, updatedAt: -1 });
+LeaseSchema.index({ unit_id: 1, updatedAt: -1 });
+LeaseSchema.index({ unit_id: 1, status: 1, updatedAt: -1 });

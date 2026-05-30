@@ -18,6 +18,8 @@ import {
   TaskAlert,
   TaskAlertDocumentModel,
 } from '../tasks-alerts/schemas/task-alert.schema';
+import { Unit, UnitDocumentModel } from '../unit/schemas/unit.schema';
+import { normalizeUnitCode } from '../unit/utils/normalize-unit-code.util';
 import { CreatePropertyFormDto } from './dto/create-property-form.dto';
 import { GcsThumbnailService } from './gcs-thumbnail.service';
 import { Property, PropertyDocumentModel } from './schemas/property.schema';
@@ -25,6 +27,16 @@ import type { Express } from 'express';
 
 function newPropertyId(): string {
   return `prp_${randomBytes(6).toString('hex')}`;
+}
+
+function newUnitId(): string {
+  return `unt_${randomBytes(6).toString('hex')}`;
+}
+
+interface UnitStats {
+  unit_count: number;
+  occupied_count: number;
+  default_unit_id: string | null;
 }
 
 const PLACEHOLDER_THUMBNAIL_PATH =
@@ -45,6 +57,11 @@ export class PropertyService {
     private taskAlertModel: Model<TaskAlertDocumentModel>,
     @InjectModel(PropertyAlert.name)
     private propertyAlertModel: Model<PropertyAlertDocumentModel>,
+    // Injected directly here (rather than via UnitService) because UnitModule
+    // imports PropertyModule for `belongsToPortfolio`. PropertyService writes
+    // a single default unit on property POST and reads counts for listings.
+    @InjectModel(Unit.name)
+    private unitModel: Model<UnitDocumentModel>,
     private readonly portfolioService: PortfolioService,
     private readonly gcsThumbnail: GcsThumbnailService,
     private readonly config: ConfigService,
@@ -90,7 +107,41 @@ export class PropertyService {
       thumbnail_url,
     });
 
-    return this.toResponse(doc);
+    // Auto-create a default unit so the quick-save flow (portfolio → property
+    // → lease in one shot) has somewhere to attach the lease without an
+    // explicit user step. The unit_code uses the same normalization as the
+    // /v1/units endpoint, keeping migration + runtime in sync.
+    let defaultUnitId: string | null = null;
+    try {
+      const unit = await this.unitModel.create({
+        unitId: newUnitId(),
+        portfolio_id: dto.portfolio_id,
+        property_id: propertyId,
+        unit_code: normalizeUnitCode('Main') || 'MAIN',
+        unit_name: 'Main',
+        building: null,
+        premises: null,
+        sqft_rentable: null,
+        sqft_usable: null,
+        parking_count: null,
+        status: 'active',
+        notes: null,
+        // Same flag the migration uses, so the UI can prompt to rename the
+        // auto-created unit if/when the user adds a real unit identity.
+        is_default_migrated: true,
+      });
+      defaultUnitId = unit.unitId;
+    } catch (err) {
+      this.logger.warn(
+        `Default unit creation failed for property ${propertyId}: ${String(err)}`,
+      );
+    }
+
+    return this.toResponse(doc, {
+      unit_count: defaultUnitId ? 1 : 0,
+      occupied_count: 0,
+      default_unit_id: defaultUnitId,
+    });
   }
 
   async listByPortfolioId(portfolioId: string) {
@@ -108,9 +159,90 @@ export class PropertyService {
       .sort({ createdAt: -1 })
       .exec();
 
+    const propertyIds = docs.map((d) => d.propertyId);
+    const unitStats = await this.aggregateUnitStats(portfolioId, propertyIds);
+
     return {
-      properties: docs.map((doc) => this.toPropertyPayload(doc)),
+      properties: docs.map((doc) =>
+        this.toPropertyPayload(doc, unitStats.get(doc.propertyId)),
+      ),
     };
+  }
+
+  /**
+   * One pass over `units` + `leases` to compute per-property unit_count /
+   * occupied_count / default_unit_id for the properties list endpoint.
+   * Inlined here so PropertyService doesn't reach into UnitService (which
+   * would create a circular import).
+   */
+  private async aggregateUnitStats(
+    portfolioId: string,
+    propertyIds: string[],
+  ): Promise<Map<string, UnitStats>> {
+    const stats = new Map<string, UnitStats>();
+    if (propertyIds.length === 0) return stats;
+
+    for (const pid of propertyIds) {
+      stats.set(pid, {
+        unit_count: 0,
+        occupied_count: 0,
+        default_unit_id: null,
+      });
+    }
+
+    const units = await this.unitModel
+      .find({
+        portfolio_id: portfolioId,
+        property_id: { $in: propertyIds },
+      })
+      .select({ unitId: 1, property_id: 1, status: 1, _id: 0 })
+      .lean()
+      .exec();
+
+    // First unit per property (by Mongo's natural order — good enough; the
+    // value is only surfaced when unit_count === 1 so order doesn't matter).
+    const firstUnitByProperty = new Map<string, string>();
+    for (const u of units) {
+      const bucket = stats.get(u.property_id);
+      if (!bucket) continue;
+      bucket.unit_count += 1;
+      if (!firstUnitByProperty.has(u.property_id)) {
+        firstUnitByProperty.set(u.property_id, u.unitId);
+      }
+    }
+
+    // Occupied = active unit that has at least one processed lease. Cheaper
+    // than per-unit lookups: pull all processed leases for these properties
+    // and reduce client-side.
+    const processedLeases = await this.leaseModel
+      .find({
+        portfolio_id: portfolioId,
+        property_id: { $in: propertyIds },
+        status: 'processed',
+      })
+      .select({ unit_id: 1, property_id: 1, _id: 0 })
+      .lean()
+      .exec();
+
+    const occupiedUnitsByProperty = new Map<string, Set<string>>();
+    for (const l of processedLeases) {
+      if (!l.unit_id || !l.property_id) continue;
+      let set = occupiedUnitsByProperty.get(l.property_id);
+      if (!set) {
+        set = new Set<string>();
+        occupiedUnitsByProperty.set(l.property_id, set);
+      }
+      set.add(l.unit_id);
+    }
+    for (const [pid, bucket] of stats.entries()) {
+      bucket.occupied_count =
+        occupiedUnitsByProperty.get(pid)?.size ?? 0;
+      if (bucket.unit_count === 1) {
+        bucket.default_unit_id = firstUnitByProperty.get(pid) ?? null;
+      }
+    }
+
+    return stats;
   }
 
   /**
@@ -195,6 +327,9 @@ export class PropertyService {
     await this.leaseModel
       .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
       .exec();
+    await this.unitModel
+      .deleteMany({ portfolio_id: portfolioId, property_id: propertyId })
+      .exec();
 
     const del = await this.propertyModel
       .deleteOne({
@@ -245,13 +380,13 @@ export class PropertyService {
     return `${base}/v1/properties/asset/${objectPath}`;
   }
 
-  private toResponse(doc: PropertyDocumentModel) {
+  private toResponse(doc: PropertyDocumentModel, stats?: UnitStats) {
     return {
-      property: this.toPropertyPayload(doc),
+      property: this.toPropertyPayload(doc, stats),
     };
   }
 
-  private toPropertyPayload(doc: PropertyDocumentModel) {
+  private toPropertyPayload(doc: PropertyDocumentModel, stats?: UnitStats) {
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;
     return {
@@ -261,6 +396,12 @@ export class PropertyService {
       address: doc.address,
       property_type: doc.property_type,
       thumbnail_url: doc.thumbnail_url,
+      // Unit-layer summary. Omitted on legacy paths (e.g. dashboard widgets)
+      // by leaving `stats` undefined — the frontend already treats these
+      // fields as optional.
+      unit_count: stats?.unit_count,
+      occupied_count: stats?.occupied_count,
+      default_unit_id: stats?.default_unit_id ?? null,
       audit: {
         created_at: createdAt?.toISOString() ?? new Date().toISOString(),
         updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),
