@@ -10,12 +10,13 @@ import {
 
 import { PortfolioAccessGuard } from '../../auth/guards/portfolio-access.guard';
 import { ReconcileYearDto } from '../dto/reconcile.dto';
+import { CamEnabledGuard } from '../guards/cam-enabled.guard';
 import { ReconciliationRunMode } from '../schemas/reconciliation-run.schema';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { requireQuery } from '../utils/require-query';
 
 @Controller('cam/reconcile')
-@UseGuards(PortfolioAccessGuard)
+@UseGuards(PortfolioAccessGuard, CamEnabledGuard)
 export class ReconciliationController {
   constructor(private readonly svc: ReconciliationService) {}
 

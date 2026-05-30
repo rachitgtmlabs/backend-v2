@@ -144,6 +144,44 @@ const rulesByCategorySchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Best-effort structured CAM allocation derived from the lease text, used to
+ * pre-fill the per-unit CAM Allocation editor. Numeric percentages are stored
+ * as decimals (0.175 = 17.5%) to match the engine's representation. Every key
+ * is required (strict mode); use null / "" / [] when the lease is silent and
+ * set `available: false` when there isn't enough to suggest anything.
+ */
+const suggestedAllocationSchema = {
+  type: 'object',
+  properties: {
+    available: { type: 'boolean' },
+    base_amount: { type: ['number', 'null'] },
+    base_year: { type: ['integer', 'null'] },
+    share_pct: { type: ['number', 'null'] },
+    admin_fee_pct: { type: ['number', 'null'] },
+    exclusions: { type: 'array', items: { type: 'string' } },
+    rule_name: { type: 'string' },
+    rule_ids: { type: 'array', items: { type: 'string' } },
+    confidence: { type: 'number' },
+    sourcePages: { type: 'array', items: { type: 'integer' } },
+    notes: { type: 'string' },
+  },
+  required: [
+    'available',
+    'base_amount',
+    'base_year',
+    'share_pct',
+    'admin_fee_pct',
+    'exclusions',
+    'rule_name',
+    'rule_ids',
+    'confidence',
+    'sourcePages',
+    'notes',
+  ],
+  additionalProperties: false,
+} as const;
+
 const summarySchema = {
   type: 'object',
   properties: {
@@ -176,6 +214,7 @@ export const CAM_REVIEW_JSON_SCHEMA = {
     camRules: { type: 'array', items: camRuleItem },
     flagsAndObservations: flagsAndObservationsSchema,
     summary: summarySchema,
+    suggestedAllocation: suggestedAllocationSchema,
   },
   required: [
     'ambiguities',
@@ -185,6 +224,7 @@ export const CAM_REVIEW_JSON_SCHEMA = {
     'camRules',
     'flagsAndObservations',
     'summary',
+    'suggestedAllocation',
   ],
   additionalProperties: false,
 } as const;

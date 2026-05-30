@@ -17,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { SuperadminModule } from './superadmin/superadmin.module';
 import { BriefingModule } from './briefing/briefing.module';
 import { ExecBriefingModule } from './exec-briefing/exec-briefing.module';
 
@@ -44,6 +45,7 @@ import { ExecBriefingModule } from './exec-briefing/exec-briefing.module';
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    SuperadminModule,
     BriefingModule,
     ExecBriefingModule,
   ],

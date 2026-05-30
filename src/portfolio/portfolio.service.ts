@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { Amendment, AmendmentDocumentModel } from '../lease/schemas/amendment.schema';
 import { Lease, LeaseDocumentModel } from '../lease/schemas/lease.schema';
 import { Property, PropertyDocumentModel } from '../property/schemas/property.schema';
@@ -57,7 +62,37 @@ export class PortfolioService {
     private propertyAlertModel: Model<PropertyAlertDocumentModel>,
     @InjectModel(Unit.name)
     private unitModel: Model<UnitDocumentModel>,
+    private readonly organizationsService: OrganizationsService,
   ) {}
+
+  /** Portfolio ids owned by an org. Used to org-scope lease/amendment counts
+   * (those documents carry only portfolio_id, not organization_id). */
+  async listPortfolioIdsForOrg(orgId?: string): Promise<string[]> {
+    const rows = await this.portfolioModel
+      .find(orgFilter(orgId))
+      .select('portfolioId')
+      .lean()
+      .exec();
+    return rows.map((r) => r.portfolioId);
+  }
+
+  /** Number of portfolios in an org. */
+  countByOrg(orgId?: string): Promise<number> {
+    return this.portfolioModel.countDocuments(orgFilter(orgId)).exec();
+  }
+
+  /** Enforce the org's maxPortfolios quota. A negative limit means unlimited. */
+  private async assertPortfolioQuota(orgId: string): Promise<void> {
+    const org = await this.organizationsService.findByOrgId(orgId);
+    const limit = org?.maxPortfolios ?? -1;
+    if (limit < 0) return;
+    const count = await this.countByOrg(orgId);
+    if (count >= limit) {
+      throw new ForbiddenException(
+        `Portfolio limit reached for this organization (max ${limit}).`,
+      );
+    }
+  }
 
   async create(
     dto: CreatePortfolioDto,
@@ -67,6 +102,7 @@ export class PortfolioService {
     if (!orgId) {
       throw new NotFoundException('Organization context required');
     }
+    await this.assertPortfolioQuota(orgId);
     const p = dto.portfolio;
     const portfolioId = newPortfolioId();
     const document_requirements: DocumentRequirement[] =
