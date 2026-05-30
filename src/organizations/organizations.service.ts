@@ -62,6 +62,28 @@ export class OrganizationsService {
     return this.orgModel.findOne({ orgId }).exec();
   }
 
+  /**
+   * Apply a partial settings update (quotas / feature flags) to one org.
+   * Only the provided keys are written. Returns the updated document, or null
+   * if no org with that orgId exists. Used by the superadmin surface.
+   */
+  updateSettings(
+    orgId: string,
+    patch: Partial<
+      Pick<
+        Organization,
+        | 'maxPortfolios'
+        | 'maxLeases'
+        | 'maxAmendments'
+        | 'camReconciliationEnabled'
+      >
+    >,
+  ): Promise<OrganizationDocument | null> {
+    return this.orgModel
+      .findOneAndUpdate({ orgId }, { $set: patch }, { new: true })
+      .exec();
+  }
+
   /** All organizations. Used by the daily-briefing scheduler to sweep every
    * org and fire each one's briefing at its local 6 AM. */
   listAll(): Promise<OrganizationDocument[]> {

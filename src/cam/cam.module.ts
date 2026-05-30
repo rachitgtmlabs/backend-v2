@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { LeaseAnalysisModule } from '../lease-analysis/lease-analysis.module';
 import { Lease, LeaseSchema } from '../lease/schemas/lease.schema';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { PropertyModule } from '../property/property.module';
 import { UnitModule } from '../unit/unit.module';
@@ -70,6 +71,7 @@ import { TenantInvoicesService } from './services/tenant-invoices.service';
     PortfolioModule, // PortfolioAccessGuard depends on PortfolioService
     PropertyModule, // GcsThumbnailService for source-file uploads
     LeaseAnalysisModule, // OcrExtractionBridgeService for bill OCR
+    OrganizationsModule, // CamEnabledGuard reads camReconciliationEnabled
   ],
   controllers: [
     ExpenseCategoriesController,

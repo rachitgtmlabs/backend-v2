@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
+import { CurrentOrgId } from '../auth/decorators/current-user.decorator';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { LeaseService } from './lease.service';
 
@@ -213,14 +214,18 @@ export class LeaseController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() body: CreateLeaseDto, @Req() req: Request) {
+  create(
+    @Body() body: CreateLeaseDto,
+    @Req() req: Request,
+    @CurrentOrgId() orgId: string | undefined,
+  ) {
     const user = (req as Request & { user?: { email?: string; _id?: unknown } })
       .user;
     const userEmail =
       typeof user?.email === 'string' && user.email.trim().length > 0
         ? user.email.trim()
         : null;
-    return this.leaseService.create(body, { userEmail });
+    return this.leaseService.create(body, { userEmail, orgId: orgId ?? null });
   }
 }
 

@@ -26,6 +26,24 @@ export class Organization {
   // and to label briefing timestamps. Defaults until set in org settings.
   @Prop({ required: true, default: 'America/New_York' })
   timezone: string;
+
+  // --- Superadmin-managed quotas & feature flags --------------------------
+  // Per-org caps enforced at create time. A negative value (default -1) means
+  // "unlimited"; 0 blocks all new creations; N caps at N. Edited from the
+  // /superadmin page (see SuperadminController).
+  @Prop({ type: Number, default: -1 })
+  maxPortfolios: number;
+
+  @Prop({ type: Number, default: -1 })
+  maxLeases: number;
+
+  @Prop({ type: Number, default: -1 })
+  maxAmendments: number;
+
+  // When false, CAM reconciliation endpoints are blocked for this org by the
+  // CamEnabledGuard. Defaults true so existing orgs keep current behavior.
+  @Prop({ type: Boolean, default: true })
+  camReconciliationEnabled: boolean;
 }
 
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

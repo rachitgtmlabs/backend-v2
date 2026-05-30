@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,6 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
@@ -43,11 +45,12 @@ export class LeaseService {
     private readonly tasksAlertsService: TasksAlertsService,
     private readonly gcsThumbnail: GcsThumbnailService,
     private readonly unitService: UnitService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
   async create(
     dto: CreateLeaseDto,
-    auth?: { userEmail?: string | null },
+    auth?: { userEmail?: string | null; orgId?: string | null },
   ) {
     // Validate portfolio exists
     const exists = await this.portfolioService.existsByPortfolioId(
@@ -75,11 +78,41 @@ export class LeaseService {
     // inherit unit_id from the parent lease and ignore any caller-supplied
     // unit_id entirely.
     if (dto.document_type === 'amendment') {
+      await this.assertCreateQuota(auth?.orgId ?? null, 'amendment');
       return this.createAmendment(dto, auth?.userEmail ?? null);
     }
 
+    await this.assertCreateQuota(auth?.orgId ?? null, 'lease');
     const unitId = await this.resolveUnitIdForNewLease(dto);
     return this.createLease(dto, unitId);
+  }
+
+  /**
+   * Enforce the org's maxLeases / maxAmendments quota before creating a
+   * document. Leases and amendments carry only portfolio_id (no
+   * organization_id), so we count across the org's portfolios. A negative
+   * limit, or a missing org context, means "no limit".
+   */
+  private async assertCreateQuota(
+    orgId: string | null,
+    kind: 'lease' | 'amendment',
+  ): Promise<void> {
+    if (!orgId) return;
+    const org = await this.organizationsService.findByOrgId(orgId);
+    const limit =
+      kind === 'lease' ? (org?.maxLeases ?? -1) : (org?.maxAmendments ?? -1);
+    if (limit < 0) return;
+    const portfolioIds =
+      await this.portfolioService.listPortfolioIdsForOrg(orgId);
+    const model = kind === 'lease' ? this.leaseModel : this.amendmentModel;
+    const count = await model
+      .countDocuments({ portfolio_id: { $in: portfolioIds } })
+      .exec();
+    if (count >= limit) {
+      throw new ForbiddenException(
+        `${kind === 'lease' ? 'Lease' : 'Amendment'} limit reached for this organization (max ${limit}).`,
+      );
+    }
   }
 
   /**
