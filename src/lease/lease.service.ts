@@ -14,6 +14,7 @@ import { PropertyService } from '../property/property.service';
 import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
 import { GcsThumbnailService } from '../property/gcs-thumbnail.service';
 import { UnitService } from '../unit/unit.service';
+import { UpdateUnitDto } from '../unit/dto/update-unit.dto';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { Lease, LeaseDocumentModel } from './schemas/lease.schema';
 import { Amendment, AmendmentDocumentModel } from './schemas/amendment.schema';
@@ -163,6 +164,88 @@ export class LeaseService {
   }
 
   /**
+   * If an amendment's extracted delta contains a confident CAM suggestion
+   * (confidence >= 0.6), update the unit's cam_allocation with the fully-merged
+   * effective state so the engine always invoices at the latest terms.
+   *
+   * An amendment may only carry a subset of CAM fields (e.g. just share_pct).
+   * We merge the effective suggestion onto the unit's existing allocation so
+   * partial deltas update the changed fields without wiping the rest.
+   */
+  private async syncCamFromAmendment(
+    leaseId: string,
+    unitId: string,
+    portfolioId: string,
+    amendmentAnalysisDelta: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const CAM_CONFIDENCE_THRESHOLD = 0.6;
+
+    // Skip entirely if this amendment delta doesn't touch camReview at all
+    const deltaSuggestion = (amendmentAnalysisDelta as any)?.camReview
+      ?.suggestedAllocation;
+    if (!deltaSuggestion) return;
+
+    // Use the fully-merged effective state so prior amendments are respected
+    const effective = await this.getEffectiveState(leaseId);
+    const suggested = (effective.effectiveAnalysis as any)?.camReview
+      ?.suggestedAllocation;
+
+    if (
+      !suggested?.available ||
+      typeof suggested.confidence !== 'number' ||
+      suggested.confidence < CAM_CONFIDENCE_THRESHOLD
+    ) {
+      this.logger.log(
+        `Amendment CAM suggestion below threshold for unit ${unitId} ` +
+          `(confidence=${suggested?.confidence ?? 'n/a'}), skipping`,
+      );
+      return;
+    }
+
+    // Fetch the unit's current allocation to use as fallback for any fields
+    // the effective suggestion doesn't provide (amendment may be a partial delta)
+    const { unit } = await this.unitService.getOne(portfolioId, unitId);
+    const existing = unit.cam_allocation;
+
+    const base_amount = suggested.base_amount ?? existing?.base_amount ?? null;
+    const base_year = suggested.base_year ?? existing?.base_year ?? null;
+    const share_pct = suggested.share_pct ?? existing?.share_pct ?? null;
+
+    // All three are required by the CAM engine — skip if still unresolvable
+    if (base_amount === null || base_year === null || share_pct === null) {
+      this.logger.warn(
+        `Amendment CAM suggestion cannot resolve required fields for unit ${unitId} ` +
+          `(base_amount=${base_amount}, base_year=${base_year}, share_pct=${share_pct}), skipping`,
+      );
+      return;
+    }
+
+    const patch: UpdateUnitDto = {
+      portfolio_id: portfolioId,
+      cam_allocation: {
+        base_amount,
+        base_year,
+        share_pct,
+        exclusions: suggested.exclusions?.length
+          ? suggested.exclusions
+          : (existing?.exclusions ?? []),
+        admin_fee_pct: suggested.admin_fee_pct ?? existing?.admin_fee_pct ?? null,
+        rule_ids: suggested.rule_ids?.length
+          ? suggested.rule_ids
+          : (existing?.rule_ids ?? []),
+        rule_name: suggested.rule_name || existing?.rule_name || '',
+        source: 'lease_abstraction',
+      },
+    };
+
+    await this.unitService.update(unitId, patch);
+    this.logger.log(
+      `Auto-applied CAM allocation from amendment to unit ${unitId} ` +
+        `(confidence=${suggested.confidence})`,
+    );
+  }
+
+  /**
    * Create an amendment for an existing lease
    */
   private async createAmendment(
@@ -223,6 +306,21 @@ export class LeaseService {
       { leaseId: parentLease.leaseId },
       { $inc: { amendment_version: 1 } },
     );
+
+    // Propagate CAM changes from the amendment to the unit (fire-and-forget
+    // with internal error handling so a CAM failure never blocks the response)
+    if (parentLease.unit_id) {
+      this.syncCamFromAmendment(
+        parentLease.leaseId,
+        parentLease.unit_id,
+        dto.portfolio_id,
+        dto.analysis as Record<string, unknown> | undefined,
+      ).catch((err) =>
+        this.logger.error(
+          `syncCamFromAmendment failed for unit ${parentLease.unit_id}: ${err?.message}`,
+        ),
+      );
+    }
 
     const createdAt = amendmentDoc.createdAt;
     const updatedAt = amendmentDoc.updatedAt;
