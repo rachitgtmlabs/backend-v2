@@ -9,6 +9,7 @@ import {
   NotFoundException,
   Param,
   ParseFilePipeBuilder,
+  Patch,
   Post,
   Query,
   Res,
@@ -23,6 +24,7 @@ import { memoryStorage } from 'multer';
 import { Public } from '../auth/decorators/public.decorator';
 import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { CreatePropertyFormDto } from './dto/create-property-form.dto';
+import { UpdatePropertyFormDto } from './dto/update-property-form.dto';
 import { GcsThumbnailService } from './gcs-thumbnail.service';
 import { PropertyService } from './property.service';
 
@@ -91,6 +93,22 @@ export class PropertyController {
       'Cache-Control': 'public, max-age=31536000, immutable',
     });
     res.send(result.buffer);
+  }
+
+  @Patch(':propertyId')
+  @UseInterceptors(thumbnailInterceptor)
+  update(
+    @Param('propertyId') propertyId: string,
+    @Query('portfolio_id') portfolioId: string | undefined,
+    @Body() body: UpdatePropertyFormDto,
+    @UploadedFile(thumbnailValidationPipe)
+    thumbnail: Express.Multer.File | undefined,
+  ) {
+    const pid = portfolioId?.trim();
+    if (!pid) {
+      throw new BadRequestException('Query parameter portfolio_id is required');
+    }
+    return this.propertyService.update(pid, propertyId.trim(), body, thumbnail);
   }
 
   @Get(':propertyId/deletion-impact')

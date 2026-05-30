@@ -19,7 +19,7 @@ export class MongoIndexesService implements OnModuleInit {
       return;
     }
 
-    await Promise.all(models.map((model) => model.syncIndexes()));
+    await Promise.all(models.map((model) => model.createIndexes()));
 
     const collections = models
       .map((m) => `${m.modelName}(${m.collection.collectionName})`)

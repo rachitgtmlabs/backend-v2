@@ -19,7 +19,6 @@ import {
   TaskAlertDocumentModel,
 } from '../tasks-alerts/schemas/task-alert.schema';
 import { Unit, UnitDocumentModel } from '../unit/schemas/unit.schema';
-import { normalizeUnitCode } from '../unit/utils/normalize-unit-code.util';
 import { CreatePropertyFormDto } from './dto/create-property-form.dto';
 import { GcsThumbnailService } from './gcs-thumbnail.service';
 import { Property, PropertyDocumentModel } from './schemas/property.schema';
@@ -29,9 +28,6 @@ function newPropertyId(): string {
   return `prp_${randomBytes(6).toString('hex')}`;
 }
 
-function newUnitId(): string {
-  return `unt_${randomBytes(6).toString('hex')}`;
-}
 
 interface UnitStats {
   unit_count: number;
@@ -107,40 +103,10 @@ export class PropertyService {
       thumbnail_url,
     });
 
-    // Auto-create a default unit so the quick-save flow (portfolio → property
-    // → lease in one shot) has somewhere to attach the lease without an
-    // explicit user step. The unit_code uses the same normalization as the
-    // /v1/units endpoint, keeping migration + runtime in sync.
-    let defaultUnitId: string | null = null;
-    try {
-      const unit = await this.unitModel.create({
-        unitId: newUnitId(),
-        portfolio_id: dto.portfolio_id,
-        property_id: propertyId,
-        unit_code: normalizeUnitCode('Main') || 'MAIN',
-        unit_name: 'Main',
-        building: null,
-        premises: null,
-        sqft_rentable: null,
-        sqft_usable: null,
-        parking_count: null,
-        status: 'active',
-        notes: null,
-        // Same flag the migration uses, so the UI can prompt to rename the
-        // auto-created unit if/when the user adds a real unit identity.
-        is_default_migrated: true,
-      });
-      defaultUnitId = unit.unitId;
-    } catch (err) {
-      this.logger.warn(
-        `Default unit creation failed for property ${propertyId}: ${String(err)}`,
-      );
-    }
-
     return this.toResponse(doc, {
-      unit_count: defaultUnitId ? 1 : 0,
+      unit_count: 0,
       occupied_count: 0,
-      default_unit_id: defaultUnitId,
+      default_unit_id: null,
     });
   }
 
@@ -340,6 +306,47 @@ export class PropertyService {
     if (del.deletedCount === 0) {
       throw new NotFoundException(`Property not found: ${propertyId}`);
     }
+  }
+
+  async update(
+    portfolioIdRaw: string,
+    propertyIdRaw: string,
+    dto: import('./dto/update-property-form.dto').UpdatePropertyFormDto,
+    file?: Express.Multer.File,
+  ) {
+    const portfolioId = portfolioIdRaw.trim();
+    const propertyId = propertyIdRaw.trim();
+
+    if (!(await this.portfolioService.existsByPortfolioId(portfolioId))) {
+      throw new NotFoundException(`Portfolio not found: ${portfolioId}`);
+    }
+
+    const doc = await this.propertyModel.findOne({
+      propertyId,
+      $or: [{ portfolio_id: portfolioId }, { portfolioId: portfolioId }],
+    }).exec();
+
+    if (!doc) {
+      throw new NotFoundException(`Property not found: ${propertyId}`);
+    }
+
+    if (dto.property_name) doc.property_name = dto.property_name;
+    if (dto.address) doc.address = dto.address;
+    if (dto.property_type) doc.property_type = dto.property_type;
+
+    if (file) {
+      try {
+        const objectPath = await this.gcsThumbnail.uploadPropertyThumbnail(propertyId, file);
+        if (objectPath) {
+          doc.thumbnail_url = this.buildAssetProxyUrl(objectPath);
+        }
+      } catch (err) {
+        this.logger.warn('GCS thumbnail upload failed during update', err instanceof Error ? err.message : err);
+      }
+    }
+
+    await doc.save();
+    return this.toResponse(doc);
   }
 
   /** True if a property id exists and belongs to the given portfolio. */
