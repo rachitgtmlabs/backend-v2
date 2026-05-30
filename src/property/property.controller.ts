@@ -26,7 +26,9 @@ import { CreatePropertyFormDto } from './dto/create-property-form.dto';
 import { GcsThumbnailService } from './gcs-thumbnail.service';
 import { PropertyService } from './property.service';
 
-const THUMBNAIL_MAX_BYTES = 10 * 1024 * 1024;
+// Outer hard cap: we accept generously and compress server-side (see
+// GcsThumbnailService), but bound the in-memory upload to avoid a DoS vector.
+const THUMBNAIL_MAX_BYTES = 25 * 1024 * 1024;
 const ALLOWED_THUMBNAIL_MIME = /^image\/(png|jpe?g|webp|gif)$/i;
 
 const thumbnailInterceptor = FileInterceptor('thumbnail', {

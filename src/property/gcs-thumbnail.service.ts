@@ -3,6 +3,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Express } from 'express';
 import { basename } from 'path';
+import sharp from 'sharp';
+
+// Thumbnails render at a few hundred px; cap the longest side generously and
+// re-encode lossily to WebP so multi-MB uploads land as ~100-200KB objects.
+const THUMBNAIL_MAX_DIMENSION = 1200;
+const THUMBNAIL_WEBP_QUALITY = 80;
 
 @Injectable()
 export class GcsThumbnailService {
@@ -65,8 +71,7 @@ export class GcsThumbnailService {
     }
 
     const buf = file.buffer;
-    const size = buf?.length ?? file.size ?? 0;
-    if (size < 1) {
+    if (!buf?.length) {
       return null;
     }
 
@@ -75,18 +80,20 @@ export class GcsThumbnailService {
       return null;
     }
 
-    const bucket = storage.bucket(this.bucketName()!);
-    const safeBase = basename(file.originalname || 'image').replace(
-      /[^a-zA-Z0-9._-]/g,
-      '_',
+    const { buffer, contentType, ext } = await this.compressThumbnail(
+      buf,
+      file.mimetype,
     );
-    const suffix = safeBase.includes('.') ? '' : this.extFromMime(file.mimetype);
-    const objectPath = `properties/${propertyId}/${Date.now()}-${safeBase}${suffix}`;
+
+    const bucket = storage.bucket(this.bucketName()!);
+    // Re-encoding changes the format, so derive the object name from the
+    // property id + final extension rather than the (untrusted) upload name.
+    const objectPath = `properties/${propertyId}/${Date.now()}-thumbnail${ext}`;
 
     const gcsFile = bucket.file(objectPath);
     try {
-      await gcsFile.save(buf as Buffer, {
-        contentType: file.mimetype || 'application/octet-stream',
+      await gcsFile.save(buffer, {
+        contentType,
         resumable: false,
         metadata: {
           cacheControl: 'public, max-age=31536000',
@@ -98,6 +105,44 @@ export class GcsThumbnailService {
     }
 
     return objectPath;
+  }
+
+  /**
+   * Resizes (longest side capped) and lossily re-encodes a raster image to
+   * WebP. SVGs are vector and pass through untouched. If sharp fails to decode
+   * the input, the original bytes are stored as-is so the upload still works.
+   */
+  private async compressThumbnail(
+    input: Buffer,
+    mimetype: string | undefined,
+  ): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
+    if (mimetype === 'image/svg+xml') {
+      return { buffer: input, contentType: 'image/svg+xml', ext: '.svg' };
+    }
+
+    try {
+      const buffer = await sharp(input, { animated: true })
+        .rotate() // honour EXIF orientation before metadata is stripped
+        .resize({
+          width: THUMBNAIL_MAX_DIMENSION,
+          height: THUMBNAIL_MAX_DIMENSION,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: THUMBNAIL_WEBP_QUALITY })
+        .toBuffer();
+      return { buffer, contentType: 'image/webp', ext: '.webp' };
+    } catch (err) {
+      this.logger.warn(
+        'Thumbnail compression failed; storing original bytes',
+        err as Error,
+      );
+      return {
+        buffer: input,
+        contentType: mimetype || 'application/octet-stream',
+        ext: this.extFromMime(mimetype) || '',
+      };
+    }
   }
 
   /**
