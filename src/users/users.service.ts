@@ -83,6 +83,17 @@ export class UsersService {
     return enabled;
   }
 
+  /** Set organization_id on a user who doesn't have one yet (backfill). */
+  async setOrgId(userId: string, orgId: string): Promise<UserDocument | null> {
+    return this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $set: { organization_id: orgId } },
+        { new: true },
+      )
+      .exec();
+  }
+
   async create(userData: Partial<User>): Promise<UserDocument> {
     const newUser = new this.userModel(userData);
     return newUser.save();

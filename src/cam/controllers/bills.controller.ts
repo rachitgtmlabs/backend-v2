@@ -3,18 +3,23 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { memoryStorage } from 'multer';
 
 import { PortfolioAccessGuard } from '../../auth/guards/portfolio-access.guard';
+import { GcsThumbnailService } from '../../property/gcs-thumbnail.service';
 import {
   CreateBillDto,
   TransitionBillDto,
@@ -31,6 +36,7 @@ export class BillsController {
   constructor(
     private readonly svc: BillsService,
     private readonly upload: BillsUploadService,
+    private readonly gcs: GcsThumbnailService,
   ) {}
 
   /** Story 7 (manual create — OCR pipeline calls this too once wired). */
@@ -65,6 +71,33 @@ export class BillsController {
       session_id: sessionId?.trim() || undefined,
       file,
     });
+  }
+
+  /**
+   * Proxy a bill source PDF/image from GCS to the client.
+   * GET /v1/cam/bills/document?path=documents/cam-bills/...&portfolio_id=prt_...
+   */
+  @Get('document')
+  async getDocument(
+    @Query('path') objectPath: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const path = objectPath?.trim();
+    if (!path) {
+      throw new BadRequestException('Query parameter path is required');
+    }
+    if (!path.startsWith('documents/cam-bills/')) {
+      throw new BadRequestException('Invalid document path');
+    }
+    const result = await this.gcs.downloadFile(path);
+    if (!result) {
+      throw new NotFoundException('Document not found');
+    }
+    res.set({
+      'Content-Type': result.contentType,
+      'Content-Disposition': 'inline',
+    });
+    return new StreamableFile(result.buffer);
   }
 
   /** Story 14 — bill review queue. Filterable by property, session, status. */

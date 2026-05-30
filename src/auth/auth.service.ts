@@ -80,7 +80,27 @@ export class AuthService {
   }
 
   async login(user: SafeUser | UserDocument | Express.User) {
-    const u = user as SafeUser;
+    let u = user as SafeUser;
+
+    // Backfill organization_id for accounts created before the org system
+    // (local-auth register, early passkey enrollments). Without this the
+    // PortfolioAccessGuard always returns 403 for these users.
+    if (!u.organization_id && u.email) {
+      try {
+        const org = await this.organizationsService.resolveForEmail(u.email as string);
+        const updated = await this.usersService.setOrgId(String(u._id), org.orgId);
+        if (updated) {
+          const { password: _p, ...safe } = updated.toObject();
+          void _p;
+          u = safe as SafeUser;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Could not backfill organization_id for ${u.email}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     const payload: {
       email?: string;
       sub: unknown;
