@@ -19,6 +19,47 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
+  /** Find the user who owns a given passkey credential (by base64url id). */
+  async findByCredentialId(
+    credentialId: string,
+  ): Promise<UserDocument | null> {
+    return this.userModel
+      .findOne({ 'webauthnCredentials.credentialId': credentialId })
+      .exec();
+  }
+
+  /** Append a freshly-registered passkey credential to a user. */
+  async addWebauthnCredential(
+    userId: string,
+    credential: {
+      credentialId: string;
+      publicKey: string;
+      counter: number;
+      transports: string[];
+    },
+  ): Promise<void> {
+    await this.userModel
+      .updateOne(
+        { _id: userId },
+        { $push: { webauthnCredentials: { ...credential, createdAt: new Date() } } },
+      )
+      .exec();
+  }
+
+  /** Bump a credential's signature counter after a successful assertion. */
+  async updateCredentialCounter(
+    userId: string,
+    credentialId: string,
+    counter: number,
+  ): Promise<void> {
+    await this.userModel
+      .updateOne(
+        { _id: userId, 'webauthnCredentials.credentialId': credentialId },
+        { $set: { 'webauthnCredentials.$.counter': counter } },
+      )
+      .exec();
+  }
+
   /** Users in an org who have opted into the daily-briefing email and have an
    * email address on file. Used by the briefing notifier. */
   async findBriefingSubscribers(orgId: string): Promise<UserDocument[]> {
