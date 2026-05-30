@@ -13,6 +13,7 @@ import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdateUnitFormDto } from './dto/update-unit-form.dto';
 import { Unit, UnitDocumentModel } from './schemas/unit.schema';
 import { normalizeUnitCode } from './utils/normalize-unit-code.util';
 
@@ -184,6 +185,57 @@ export class UnitService {
     if (dto.cam_allocation !== undefined) {
       // Explicit null = clear the allocation. Otherwise patch the embedded
       // sub-doc — engine reads this at preview/commit time.
+      if (dto.cam_allocation === null) {
+        doc.cam_allocation = null;
+      } else {
+        const p = dto.cam_allocation;
+        doc.cam_allocation = {
+          base_amount: p.base_amount,
+          base_year: p.base_year,
+          share_pct: p.share_pct,
+          exclusions: p.exclusions ?? [],
+          admin_fee_pct: p.admin_fee_pct ?? null,
+          rule_ids: p.rule_ids ?? [],
+          rule_name: p.rule_name ?? '',
+          source: p.source ?? 'manual_override',
+        };
+      }
+    }
+
+    try {
+      const saved = await doc.save();
+      return { unit: this.toUnitPayload(saved) };
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        throw new ConflictException(
+          'Another unit on this property already uses that code',
+        );
+      }
+      throw err;
+    }
+  }
+
+  async updateForm(
+    unitId: string,
+    portfolioId: string,
+    dto: UpdateUnitFormDto,
+  ): Promise<{ unit: UnitPayload }> {
+    const doc = await this.findInPortfolioOrThrow(portfolioId, unitId.trim());
+
+    if (dto.unit_name !== undefined) doc.unit_name = dto.unit_name.trim();
+    if (dto.unit_type !== undefined) doc.unit_type = dto.unit_type;
+    if (dto.floor !== undefined) doc.floor = dto.floor || null;
+    if (dto.building !== undefined) doc.building = dto.building || null;
+    if (dto.premises !== undefined) doc.premises = dto.premises || null;
+    if (dto.sqft_rentable !== undefined) doc.sqft_rentable = dto.sqft_rentable;
+    if (dto.sqft_usable !== undefined) doc.sqft_usable = dto.sqft_usable;
+    if (dto.parking_count !== undefined) doc.parking_count = dto.parking_count;
+    if (dto.status !== undefined) doc.status = dto.status;
+    if (dto.notes !== undefined) doc.notes = dto.notes || null;
+    if (dto.occupancy_status !== undefined) {
+      doc.occupancy_status = dto.occupancy_status;
+    }
+    if (dto.cam_allocation !== undefined) {
       if (dto.cam_allocation === null) {
         doc.cam_allocation = null;
       } else {

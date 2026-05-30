@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { PortfolioAccessGuard } from '../auth/guards/portfolio-access.guard';
 import { CreateUnitDto } from './dto/create-unit.dto';
-import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdateUnitFormDto } from './dto/update-unit-form.dto';
 import { UnitService } from './unit.service';
 
 @Controller('units')
@@ -67,9 +67,11 @@ export class UnitController {
   @Patch(':unitId')
   update(
     @Param('unitId') unitId: string,
-    @Body() body: UpdateUnitDto,
+    @Query('portfolio_id') portfolioId: string | undefined,
+    @Body() body: UpdateUnitFormDto,
   ) {
-    return this.unitService.update(unitId, body);
+    const pf = requireQuery(portfolioId, 'portfolio_id');
+    return this.unitService.updateForm(unitId, pf, body);
   }
 
   @Delete(':unitId')
