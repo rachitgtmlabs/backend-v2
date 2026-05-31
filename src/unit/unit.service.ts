@@ -372,6 +372,21 @@ export class UnitService {
    * properties list response to surface `unit_count`/`occupied_count` so
    * the property card can render the single-unit shortcut.
    */
+  /** Map of unitId → unit_name for the given ids (Document Vault, etc.). */
+  async namesByIds(unitIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (unitIds.length === 0) return map;
+    const docs = await this.unitModel
+      .find({ unitId: { $in: unitIds } })
+      .select({ unitId: 1, unit_name: 1, _id: 0 })
+      .lean()
+      .exec();
+    for (const d of docs as { unitId: string; unit_name: string }[]) {
+      map.set(d.unitId, d.unit_name);
+    }
+    return map;
+  }
+
   async countsByPropertyIds(
     portfolioId: string,
     propertyIds: string[],

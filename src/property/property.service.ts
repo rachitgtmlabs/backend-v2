@@ -71,6 +71,21 @@ export class PropertyService {
     private readonly config: ConfigService,
   ) {}
 
+  /** Map of propertyId → property_name for the given ids (Document Vault, etc.). */
+  async namesByIds(propertyIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (propertyIds.length === 0) return map;
+    const docs = await this.propertyModel
+      .find({ propertyId: { $in: propertyIds } })
+      .select({ propertyId: 1, property_name: 1, _id: 0 })
+      .lean()
+      .exec();
+    for (const d of docs as { propertyId: string; property_name: string }[]) {
+      map.set(d.propertyId, d.property_name);
+    }
+    return map;
+  }
+
   async create(dto: CreatePropertyFormDto, file?: Express.Multer.File) {
     const exists = await this.portfolioService.existsByPortfolioId(
       dto.portfolio_id,

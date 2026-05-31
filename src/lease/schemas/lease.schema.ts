@@ -56,6 +56,23 @@ export class Lease {
    */
   @Prop({ type: [DraftedAmendmentSchema], default: [] })
   drafted_amendments: DraftedAmendment[];
+
+  /**
+   * Email of the user who saved this document, captured from the JWT at
+   * create time. Null for legacy docs created before this field existed (the
+   * vault renders those as "—"). The frontend derives a username from the
+   * part before "@".
+   */
+  @Prop({ type: String, default: null })
+  created_by: string | null;
+
+  /**
+   * Free-form categorization tags for the Document Vault. Seeded with the
+   * document kind (['lease']) and extensible to future kinds (bills, estoppel,
+   * …) without a schema migration.
+   */
+  @Prop({ type: [String], default: ['lease'] })
+  tags: string[];
 }
 
 export const LeaseSchema = SchemaFactory.createForClass(Lease);

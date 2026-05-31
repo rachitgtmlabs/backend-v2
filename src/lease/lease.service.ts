@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { UsersService } from '../users/users.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PropertyService } from '../property/property.service';
 import { TasksAlertsService } from '../tasks-alerts/tasks-alerts.service';
@@ -47,6 +48,7 @@ export class LeaseService {
     private readonly gcsThumbnail: GcsThumbnailService,
     private readonly unitService: UnitService,
     private readonly organizationsService: OrganizationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   async create(
@@ -85,7 +87,7 @@ export class LeaseService {
 
     await this.assertCreateQuota(auth?.orgId ?? null, 'lease');
     const unitId = await this.resolveUnitIdForNewLease(dto);
-    return this.createLease(dto, unitId);
+    return this.createLease(dto, unitId, auth?.userEmail ?? null);
   }
 
   /**
@@ -299,6 +301,8 @@ export class LeaseService {
       gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
       edited_by: isManualEdit ? userEmail : null,
+      created_by: userEmail,
+      tags: ['amendment'],
     });
 
     // Increment amendment_version on the parent lease
@@ -352,7 +356,11 @@ export class LeaseService {
    * from the DTO or by auto-link); both Lease and any superseded leases for
    * the same unit are kept consistent.
    */
-  private async createLease(dto: CreateLeaseDto, unitId: string) {
+  private async createLease(
+    dto: CreateLeaseDto,
+    unitId: string,
+    userEmail: string | null,
+  ) {
     // Supersede any prior processed/draft leases on the SAME unit. Previously
     // this was scoped by property; with units, two leases on different units
     // of the same property can both be active simultaneously, so the
@@ -387,6 +395,8 @@ export class LeaseService {
       amendment_version: 0,
       gcs_document_path: dto.gcs_document_path ?? null,
       drafted_amendments: dto.drafted_amendments ?? [],
+      created_by: userEmail,
+      tags: ['lease'],
     });
 
     try {
@@ -628,6 +638,130 @@ export class LeaseService {
    * By-unit variant of `listDocumentsForPortfolioProperty`. Same grouping,
    * scoped to one unit.
    */
+  /**
+   * Org-wide Document Vault: every draft lease + amendment across all of the
+   * org's portfolios. Org-scoped (not portfolio-scoped) — the caller's
+   * organization_id is the only access boundary. Optional filters narrow by
+   * property, unit, or tag. Returns rows ready for the vault table, including
+   * resolved property/unit names and a username derived from created_by.
+   */
+  async listOrgDrafts(
+    orgId: string,
+    filters: { propertyId?: string; unitId?: string; tag?: string } = {},
+  ) {
+    const portfolioIds =
+      await this.portfolioService.listPortfolioIdsForOrg(orgId);
+    if (portfolioIds.length === 0) return { documents: [] };
+
+    const query: Record<string, unknown> = {
+      portfolio_id: { $in: portfolioIds },
+      status: 'draft',
+    };
+    if (filters.propertyId) query.property_id = filters.propertyId;
+    if (filters.unitId) query.unit_id = filters.unitId;
+    if (filters.tag) query.tags = filters.tag;
+
+    const [leaseRows, amendmentRows] = await Promise.all([
+      this.leaseModel
+        .find(query)
+        .sort({ updatedAt: -1 })
+        .select([
+          'leaseId',
+          'file_name',
+          'property_id',
+          'unit_id',
+          'created_by',
+          'tags',
+          'updatedAt',
+        ])
+        .lean()
+        .exec(),
+      this.amendmentModel
+        .find(query)
+        .sort({ updatedAt: -1 })
+        .select([
+          'amendmentId',
+          'file_name',
+          'property_id',
+          'unit_id',
+          'created_by',
+          'tags',
+          'updatedAt',
+        ])
+        .lean()
+        .exec(),
+    ]);
+
+    // Resolve property/unit display names in two bulk lookups.
+    const propertyIds = [
+      ...new Set(
+        [...leaseRows, ...amendmentRows]
+          .map((r) => r.property_id)
+          .filter((v): v is string => !!v),
+      ),
+    ];
+    const unitIds = [
+      ...new Set(
+        [...leaseRows, ...amendmentRows]
+          .map((r) => r.unit_id)
+          .filter((v): v is string => !!v),
+      ),
+    ];
+    const creatorEmails = [...leaseRows, ...amendmentRows]
+      .map((r) => r.created_by)
+      .filter((v): v is string => !!v);
+    const [propertyNames, unitNames, creatorNames] = await Promise.all([
+      this.propertyService.namesByIds(propertyIds),
+      this.unitService.namesByIds(unitIds),
+      this.usersService.displayNamesByEmails(creatorEmails),
+    ]);
+
+    // Prefer the user's configured display name (Settings); else derive a
+    // username from the email ("vivek.singh@gmail.com" → "vivek.singh");
+    // null/empty → null so the vault shows "—".
+    const toCreatedBy = (email: string | null | undefined): string | null => {
+      const e = email?.trim();
+      if (!e) return null;
+      const name = creatorNames.get(e);
+      if (name) return name;
+      const at = e.indexOf('@');
+      return at > 0 ? e.slice(0, at) : e;
+    };
+
+    const row = (
+      r: {
+        file_name: string;
+        property_id: string | null;
+        unit_id: string | null;
+        created_by?: string | null;
+        tags?: string[];
+        updatedAt?: Date;
+      },
+      id: string,
+      kind: 'lease' | 'amendment',
+    ) => ({
+      id,
+      kind,
+      tags: r.tags?.length ? r.tags : [kind],
+      file_name: r.file_name,
+      property_id: r.property_id,
+      property_name: r.property_id
+        ? (propertyNames.get(r.property_id) ?? null)
+        : null,
+      unit_id: r.unit_id,
+      unit_name: r.unit_id ? (unitNames.get(r.unit_id) ?? null) : null,
+      created_by: toCreatedBy(r.created_by),
+      updated_at: r.updatedAt?.toISOString() ?? new Date().toISOString(),
+    });
+
+    const documents = [
+      ...leaseRows.map((r) => row(r, r.leaseId, 'lease')),
+      ...amendmentRows.map((r) => row(r, r.amendmentId, 'amendment')),
+    ].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+
+    return { documents };
+  }
+
   async listDocumentsForPortfolioUnit(portfolioId: string, unitId: string) {
     // Verifies the unit belongs to the portfolio.
     await this.unitService.getOne(portfolioId, unitId);

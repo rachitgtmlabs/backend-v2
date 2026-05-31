@@ -94,6 +94,49 @@ export class UsersService {
       .exec();
   }
 
+  /**
+   * Map of email → display name for users who have a non-empty `name`. Used by
+   * the Document Vault to show a real name instead of the email-derived
+   * username. Emails with no user or no name are simply absent from the map.
+   */
+  async displayNamesByEmails(emails: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const clean = [...new Set(emails.filter((e): e is string => !!e))];
+    if (clean.length === 0) return map;
+    const docs = await this.userModel
+      .find({ email: { $in: clean } })
+      .select({ email: 1, name: 1, _id: 0 })
+      .lean()
+      .exec();
+    for (const d of docs as { email?: string; name?: string }[]) {
+      if (d.email && d.name?.trim()) map.set(d.email, d.name.trim());
+    }
+    return map;
+  }
+
+  /** Editable profile fields surfaced on the Settings page. */
+  async updateProfile(
+    userId: string,
+    patch: {
+      name?: string;
+      phone?: string;
+      alert_email?: string | null;
+      timezone?: string | null;
+      briefingEmailOptIn?: boolean;
+    },
+  ): Promise<UserDocument | null> {
+    const $set: Record<string, unknown> = {};
+    if (patch.name !== undefined) $set.name = patch.name;
+    if (patch.phone !== undefined) $set.phone = patch.phone;
+    if (patch.alert_email !== undefined) $set.alert_email = patch.alert_email;
+    if (patch.timezone !== undefined) $set.timezone = patch.timezone;
+    if (patch.briefingEmailOptIn !== undefined)
+      $set.briefingEmailOptIn = patch.briefingEmailOptIn;
+    return this.userModel
+      .findByIdAndUpdate(userId, { $set }, { new: true })
+      .exec();
+  }
+
   async create(userData: Partial<User>): Promise<UserDocument> {
     const newUser = new this.userModel(userData);
     return newUser.save();
