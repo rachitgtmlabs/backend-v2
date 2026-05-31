@@ -46,6 +46,9 @@ export class Property {
     index: true,
   })
   property_kind: PropertyKind;
+
+  @Prop({ type: Number, default: null })
+  purchase_price: number | null;
 }
 
 export const PropertySchema = SchemaFactory.createForClass(Property);
