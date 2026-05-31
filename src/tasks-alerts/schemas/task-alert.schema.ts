@@ -21,9 +21,9 @@ export class TaskAlert {
   @Prop({ required: true, index: true })
   property_id: string;
 
-  /** Main lease id (les_*). */
-  @Prop({ required: true, index: true })
-  lease_id: string;
+  /** Main lease id (les_*). Null when task is created before a lease is attached. */
+  @Prop({ required: false, index: true, default: null })
+  lease_id: string | null;
 
   /**
    * Unit (unt_*) the lease belongs to. Optional during the unit-rollout

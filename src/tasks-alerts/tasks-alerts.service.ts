@@ -187,18 +187,25 @@ export class TasksAlertsService {
     leaseId: string | undefined,
   ): Promise<{ alerts: TaskAlertRowDto[]; tasks: TaskAlertRowDto[] }> {
     await this.assertPortfolioAndProperty(portfolioId, propertyId);
-    const resolvedLeaseId = await this.resolveLeaseId(
-      portfolioId,
-      propertyId,
-      leaseId,
-    );
+
+    // Try to resolve a lease — if none exists, query for lease_id: null records only
+    let resolvedLeaseId: string | null = null;
+    try {
+      resolvedLeaseId = await this.resolveLeaseId(portfolioId, propertyId, leaseId);
+    } catch {
+      // No lease yet — return only pre-lease tasks/alerts (lease_id: null)
+    }
+
+    const leaseFilter = resolvedLeaseId
+      ? { $in: [resolvedLeaseId, null] }
+      : null;
 
     const [alertsNew, alertsLegacy, taskDocs] = await Promise.all([
       this.propertyAlertModel
         .find({
           portfolio_id: portfolioId,
           property_id: propertyId,
-          lease_id: resolvedLeaseId,
+          lease_id: leaseFilter,
         })
         .lean()
         .exec(),
@@ -206,7 +213,7 @@ export class TasksAlertsService {
         .find({
           portfolio_id: portfolioId,
           property_id: propertyId,
-          lease_id: resolvedLeaseId,
+          lease_id: leaseFilter,
           category: 'alert',
         })
         .lean()
@@ -215,7 +222,7 @@ export class TasksAlertsService {
         .find({
           portfolio_id: portfolioId,
           property_id: propertyId,
-          lease_id: resolvedLeaseId,
+          lease_id: leaseFilter,
           category: 'task',
         })
         .lean()
@@ -244,18 +251,27 @@ export class TasksAlertsService {
     propertyIdFromRoute: string,
     dto: CreateTaskAlertDto,
   ): Promise<{ item: TaskAlertRowDto }> {
-    await this.resolveLeaseId(
+    await this.assertPortfolioAndProperty(
       dto.portfolio_id.trim(),
       propertyIdFromRoute.trim(),
-      dto.lease_id.trim(),
     );
+
+    // Resolve lease id if provided; otherwise store without one
+    let resolvedLeaseId: string | null = null;
+    if (dto.lease_id?.trim()) {
+      resolvedLeaseId = await this.resolveLeaseId(
+        dto.portfolio_id.trim(),
+        propertyIdFromRoute.trim(),
+        dto.lease_id.trim(),
+      );
+    }
 
     if (dto.category === 'alert') {
       const doc = await this.propertyAlertModel.create({
         itemId: newAlertItemId(),
         portfolio_id: dto.portfolio_id.trim(),
         property_id: propertyIdFromRoute.trim(),
-        lease_id: dto.lease_id.trim(),
+        lease_id: resolvedLeaseId,
         title: dto.title.trim(),
         ...(dto.details != null && dto.details.trim() !== ''
           ? { details: dto.details.trim() }
@@ -280,7 +296,7 @@ export class TasksAlertsService {
       itemId: newTaskItemId(),
       portfolio_id: dto.portfolio_id.trim(),
       property_id: propertyIdFromRoute.trim(),
-      lease_id: dto.lease_id.trim(),
+      lease_id: resolvedLeaseId,
       category: 'task',
       title: dto.title.trim(),
       ...(dto.details != null && dto.details.trim() !== ''

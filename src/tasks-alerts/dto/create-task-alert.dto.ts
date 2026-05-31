@@ -11,8 +11,9 @@ export class CreateTaskAlertDto {
   @IsString()
   portfolio_id: string;
 
+  @IsOptional()
   @IsString()
-  lease_id: string;
+  lease_id?: string;
 
   @IsIn(['alert', 'task'])
   category: 'alert' | 'task';

@@ -23,8 +23,8 @@ export class PropertyAlert {
   @Prop({ required: true, index: true })
   property_id: string;
 
-  @Prop({ required: true, index: true })
-  lease_id: string;
+  @Prop({ required: false, index: true, default: null })
+  lease_id: string | null;
 
   /**
    * Unit (unt_*) the lease belongs to. Optional during rollout; required
