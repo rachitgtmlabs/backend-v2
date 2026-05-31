@@ -86,6 +86,19 @@ export class Amendment {
    */
   @Prop({ type: String, default: null })
   edited_by: string | null;
+
+  /**
+   * Email of the user who saved this document, captured from the JWT at
+   * create time (regardless of whether it was uploaded or manually edited —
+   * unlike `edited_by`, which is set only for manual edits). Null for legacy
+   * docs; the vault renders those as "—".
+   */
+  @Prop({ type: String, default: null })
+  created_by: string | null;
+
+  /** Categorization tags for the Document Vault. Defaults to ['amendment']. */
+  @Prop({ type: [String], default: ['amendment'] })
+  tags: string[];
 }
 
 export const AmendmentSchema = SchemaFactory.createForClass(Amendment);

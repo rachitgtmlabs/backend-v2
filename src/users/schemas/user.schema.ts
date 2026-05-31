@@ -65,6 +65,17 @@ export class User {
   @Prop({ default: false })
   briefingEmailOptIn: boolean;
 
+  // Where alerts / briefings are delivered. Decoupled from the login `email`
+  // so users can route notifications elsewhere. Falls back to `email` when
+  // unset (see briefing.service). Set from the Settings page.
+  @Prop({ type: String, default: null })
+  alert_email?: string | null;
+
+  // IANA timezone (e.g. "America/New_York") for this user. Overrides the org
+  // timezone when set; used to time briefing delivery. Set from Settings.
+  @Prop({ type: String, default: null })
+  timezone?: string | null;
+
   // Registered passkeys for this user. Empty until the user enrolls one from
   // account settings (they must already be signed in via another provider).
   @Prop({ type: [WebauthnCredentialSchema], default: [] })

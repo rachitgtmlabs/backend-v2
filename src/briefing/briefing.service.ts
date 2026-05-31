@@ -106,13 +106,16 @@ export class BriefingService {
 
     let sent = 0;
     for (const user of subscribers) {
-      if (!user.email) continue;
+      // Deliver to the user's configured alert email when set, else the login
+      // email (set from the Settings page).
+      const to = user.alert_email?.trim() || user.email;
+      if (!to) continue;
       try {
-        await this.mailService.send({ to: user.email, subject, html, text });
+        await this.mailService.send({ to, subject, html, text });
         sent += 1;
       } catch (err) {
         this.logger.error(
-          `Briefing email to ${user.email} failed: ${(err as Error).message}`,
+          `Briefing email to ${to} failed: ${(err as Error).message}`,
         );
       }
     }
