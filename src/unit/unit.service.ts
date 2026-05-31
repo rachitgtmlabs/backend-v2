@@ -565,9 +565,10 @@ function summarizeLease(
         : null;
 
   const rentPerSqft = parseMoneyLeading(info.rentPerSqFt?.value);
+  const effectiveSqft = sqftRentable ?? parseMoneyLeading(info.squareFeet?.value);
   const baseRentAnnual =
-    rentPerSqft != null && sqftRentable != null && sqftRentable > 0
-      ? Math.round(rentPerSqft * sqftRentable * 100) / 100
+    rentPerSqft != null && effectiveSqft != null && effectiveSqft > 0
+      ? Math.round(rentPerSqft * effectiveSqft * 100) / 100
       : null;
 
   return {

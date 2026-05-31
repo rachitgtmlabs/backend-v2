@@ -33,6 +33,14 @@ interface UnitStats {
   unit_count: number;
   occupied_count: number;
   default_unit_id: string | null;
+  annual_rent: number;
+}
+
+function parseMoneyLeading(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  const m = s.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)/);
+  return m ? parseFloat(m[1]) : null;
 }
 
 const PLACEHOLDER_THUMBNAIL_PATH =
@@ -101,12 +109,14 @@ export class PropertyService {
       address: dto.address,
       property_type: dto.property_type,
       thumbnail_url,
+      purchase_price: dto.purchase_price ?? null,
     });
 
     return this.toResponse(doc, {
       unit_count: 0,
       occupied_count: 0,
       default_unit_id: null,
+      annual_rent: 0,
     });
   }
 
@@ -153,6 +163,7 @@ export class PropertyService {
         unit_count: 0,
         occupied_count: 0,
         default_unit_id: null,
+        annual_rent: 0,
       });
     }
 
@@ -161,12 +172,11 @@ export class PropertyService {
         portfolio_id: portfolioId,
         property_id: { $in: propertyIds },
       })
-      .select({ unitId: 1, property_id: 1, status: 1, _id: 0 })
+      .select({ unitId: 1, property_id: 1, status: 1, sqft_rentable: 1, _id: 0 })
       .lean()
       .exec();
 
-    // First unit per property (by Mongo's natural order — good enough; the
-    // value is only surfaced when unit_count === 1 so order doesn't matter).
+    const unitSqft = new Map<string, number>();
     const firstUnitByProperty = new Map<string, string>();
     for (const u of units) {
       const bucket = stats.get(u.property_id);
@@ -175,22 +185,25 @@ export class PropertyService {
       if (!firstUnitByProperty.has(u.property_id)) {
         firstUnitByProperty.set(u.property_id, u.unitId);
       }
+      if (u.sqft_rentable) unitSqft.set(u.unitId, u.sqft_rentable);
     }
 
-    // Occupied = active unit that has at least one processed lease. Cheaper
-    // than per-unit lookups: pull all processed leases for these properties
-    // and reduce client-side.
+    // Occupied = active unit that has at least one processed lease. Also
+    // grab lease_information so we can compute annual rent per property.
     const processedLeases = await this.leaseModel
       .find({
         portfolio_id: portfolioId,
         property_id: { $in: propertyIds },
         status: 'processed',
       })
-      .select({ unit_id: 1, property_id: 1, _id: 0 })
+      .select({ unit_id: 1, property_id: 1, lease_information: 1, _id: 0 })
+      .sort({ createdAt: -1 })
       .lean()
       .exec();
 
     const occupiedUnitsByProperty = new Map<string, Set<string>>();
+    // Latest processed lease per unit (leases sorted newest-first)
+    const latestLeaseByUnit = new Map<string, typeof processedLeases[number]>();
     for (const l of processedLeases) {
       if (!l.unit_id || !l.property_id) continue;
       let set = occupiedUnitsByProperty.get(l.property_id);
@@ -199,12 +212,28 @@ export class PropertyService {
         occupiedUnitsByProperty.set(l.property_id, set);
       }
       set.add(l.unit_id);
+      if (!latestLeaseByUnit.has(l.unit_id)) latestLeaseByUnit.set(l.unit_id, l);
     }
+
     for (const [pid, bucket] of stats.entries()) {
-      bucket.occupied_count =
-        occupiedUnitsByProperty.get(pid)?.size ?? 0;
+      bucket.occupied_count = occupiedUnitsByProperty.get(pid)?.size ?? 0;
       if (bucket.unit_count === 1) {
         bucket.default_unit_id = firstUnitByProperty.get(pid) ?? null;
+      }
+    }
+
+    // Sum annual rent per property from latest lease × sqft for each unit.
+    // Falls back to the sqft recorded in the lease itself when the unit record
+    // has no sqft_rentable (common for properties imported without area data).
+    for (const [unitId, lease] of latestLeaseByUnit.entries()) {
+      if (!lease.property_id) continue;
+      const bucket = stats.get(lease.property_id);
+      if (!bucket) continue;
+      const info = (lease.lease_information as { leaseInformation?: Record<string, any> })?.leaseInformation ?? {};
+      const rentPerSqft = parseMoneyLeading(info.rentPerSqFt?.value);
+      const sqft = unitSqft.get(unitId) ?? parseMoneyLeading(info.squareFeet?.value);
+      if (rentPerSqft != null && sqft != null && sqft > 0) {
+        bucket.annual_rent += Math.round(rentPerSqft * sqft * 100) / 100;
       }
     }
 
@@ -333,6 +362,7 @@ export class PropertyService {
     if (dto.property_name) doc.property_name = dto.property_name;
     if (dto.address) doc.address = dto.address;
     if (dto.property_type) doc.property_type = dto.property_type;
+    if (dto.purchase_price != null) doc.purchase_price = dto.purchase_price;
 
     if (file) {
       try {
@@ -396,6 +426,11 @@ export class PropertyService {
   private toPropertyPayload(doc: PropertyDocumentModel, stats?: UnitStats) {
     const createdAt = doc.createdAt;
     const updatedAt = doc.updatedAt;
+    const annualRent = stats?.annual_rent ?? 0;
+    const capRate = (() => {
+      if (!doc.purchase_price || doc.purchase_price <= 0 || annualRent <= 0) return null;
+      return `${((annualRent / doc.purchase_price) * 100).toFixed(1)}%`;
+    })();
     return {
       id: doc.propertyId,
       portfolio_id: doc.portfolio_id,
@@ -403,12 +438,15 @@ export class PropertyService {
       address: doc.address,
       property_type: doc.property_type,
       thumbnail_url: doc.thumbnail_url,
+      purchase_price: doc.purchase_price ?? null,
       // Unit-layer summary. Omitted on legacy paths (e.g. dashboard widgets)
       // by leaving `stats` undefined — the frontend already treats these
       // fields as optional.
       unit_count: stats?.unit_count,
       occupied_count: stats?.occupied_count,
       default_unit_id: stats?.default_unit_id ?? null,
+      annual_rent: annualRent > 0 ? annualRent : undefined,
+      cap_rate: capRate,
       audit: {
         created_at: createdAt?.toISOString() ?? new Date().toISOString(),
         updated_at: updatedAt?.toISOString() ?? new Date().toISOString(),

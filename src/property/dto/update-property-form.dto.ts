@@ -1,4 +1,5 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PropertyTypeValue } from './create-property-form.dto';
 
 export class UpdatePropertyFormDto {
@@ -17,4 +18,9 @@ export class UpdatePropertyFormDto {
   @IsString()
   @IsOptional()
   portfolio_id?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  purchase_price?: number;
 }

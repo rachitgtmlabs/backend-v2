@@ -1,4 +1,5 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export enum PropertyTypeValue {
   commercial = 'commercial',
@@ -22,4 +23,9 @@ export class CreatePropertyFormDto {
 
   @IsEnum(PropertyTypeValue)
   property_type: PropertyTypeValue;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  purchase_price?: number;
 }
