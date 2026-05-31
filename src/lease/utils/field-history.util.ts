@@ -49,6 +49,8 @@ export const TRACKED_FIELDS: TrackedField[] = [
   { path: 'executiveIdentity.leaseInformation.rentPerSqFt', label: 'Rent / Sq Ft', group: 'Financial', category: 'financial' },
   { path: 'executiveIdentity.leaseInformation.baseRent', label: 'Annual Base Rent', group: 'Financial', category: 'financial' },
   { path: 'executiveIdentity.leaseInformation.securityDeposit', label: 'Security Deposit', group: 'Financial', category: 'financial' },
+  // --- Operational ---
+  { path: 'operationalGuardrails.operatingExpenses.keyParameters', label: 'Operating Expenses', group: 'Operational', category: 'operational' },
 ];
 
 const TRACKED_BY_PATH: Map<string, TrackedField> = new Map(

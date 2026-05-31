@@ -4,6 +4,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import { mastra } from '../mastra';
 import { ChatRequestDto, ChatResponseDto } from './dto/chat.dto';
 import { RBAC_ORG_ID_KEY } from '../mastra/lib/rbac';
+import { dbg } from '../mastra/lib/debug-log';
 import type { ChatStreamEvent } from './chat-stream.types';
 
 @Injectable()
@@ -47,6 +48,12 @@ export class ChatService {
       // `context.requestContext.get(RBAC_ORG_ID_KEY)` and fail closed if missing.
       const requestContext = new RequestContext();
       requestContext.set(RBAC_ORG_ID_KEY, orgId);
+      dbg('chat.service.chat', {
+        orgId,
+        rbacKey: RBAC_ORG_ID_KEY,
+        readBack: requestContext.get(RBAC_ORG_ID_KEY),
+        userRequest,
+      });
 
       const run = await workflow.createRun();
       const result = await run.start({
@@ -168,6 +175,12 @@ export class ChatService {
 
     const requestContext = new RequestContext();
     requestContext.set(RBAC_ORG_ID_KEY, orgId);
+    dbg('chat.service.streamChat', {
+      orgId,
+      rbacKey: RBAC_ORG_ID_KEY,
+      readBack: requestContext.get(RBAC_ORG_ID_KEY),
+      userRequest,
+    });
 
     let finalEmitted = false;
 

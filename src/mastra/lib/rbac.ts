@@ -1,5 +1,6 @@
 import type { RequestContext } from '@mastra/core/request-context';
 import { getDb } from './mongo';
+import { dbg } from './debug-log';
 
 /**
  * Key used to store the caller's organization_id on Mastra's RequestContext.
@@ -19,9 +20,23 @@ export const RBAC_ORG_ID_KEY = 'organization_id';
 export function getOrgId(context: unknown): string | undefined {
   const reqCtx = (context as { requestContext?: RequestContext } | undefined)
     ?.requestContext;
-  if (!reqCtx || typeof reqCtx.get !== 'function') return undefined;
-  const value = reqCtx.get(RBAC_ORG_ID_KEY);
-  return typeof value === 'string' && value ? value : undefined;
+  const hasGet = !!reqCtx && typeof reqCtx.get === 'function';
+  const rawValue = hasGet ? reqCtx!.get(RBAC_ORG_ID_KEY) : undefined;
+  const result =
+    typeof rawValue === 'string' && rawValue ? rawValue : undefined;
+  dbg('rbac.getOrgId', {
+    contextType: typeof context,
+    contextKeys:
+      context && typeof context === 'object'
+        ? Object.keys(context as object)
+        : null,
+    hasRequestContext: !!reqCtx,
+    requestContextType: reqCtx ? reqCtx.constructor?.name ?? typeof reqCtx : null,
+    hasGet,
+    rawValue: rawValue ?? null,
+    result: result ?? null,
+  });
+  return result;
 }
 
 /**
@@ -68,7 +83,10 @@ export async function assertPortfolioAccess(
 export async function getAccessiblePortfolioIds(
   orgId: string | undefined,
 ): Promise<string[]> {
-  if (!orgId) return [];
+  if (!orgId) {
+    dbg('rbac.getAccessiblePortfolioIds', { orgId: null, count: 0, ids: [], note: 'no orgId -> fail closed' });
+    return [];
+  }
   const db = await getDb();
   const rows = await db
     .collection('portfolios')
@@ -77,9 +95,16 @@ export async function getAccessiblePortfolioIds(
       { projection: { portfolioId: 1, _id: 0 } },
     )
     .toArray();
-  return rows
+  const ids = rows
     .map((r) => (r.portfolioId ? String(r.portfolioId) : null))
     .filter((id): id is string => Boolean(id));
+  dbg('rbac.getAccessiblePortfolioIds', {
+    orgId,
+    dbName: db.databaseName,
+    count: ids.length,
+    ids,
+  });
+  return ids;
 }
 
 /** Convenience: standard "no access" tool response shape. */

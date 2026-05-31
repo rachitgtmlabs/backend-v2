@@ -7,7 +7,24 @@ import {
   type TaskResult,
 } from './schemas';
 import { TOOL_REGISTRY } from '../tools/registry';
+import { dbg } from '../lib/debug-log';
 import type { ChatStreamEvent } from '../../chat/chat-stream.types';
+
+/** Best-effort read of organization_id off whatever requestContext shape we got. */
+function peekOrg(rc: unknown): unknown {
+  const get = (rc as { get?: (k: string) => unknown } | undefined)?.get;
+  if (typeof get === 'function') {
+    try {
+      return (rc as { get: (k: string) => unknown }).get('organization_id');
+    } catch {
+      return '<get-threw>';
+    }
+  }
+  if (rc && typeof rc === 'object') {
+    return (rc as Record<string, unknown>)['organization_id'] ?? '<no-org-key>';
+  }
+  return '<no-requestContext>';
+}
 
 const logger = new Logger('LeaseChatResolution');
 
@@ -172,6 +189,12 @@ async function executeOne(
     // carries the caller's organization_id. They read RBAC scope from there
     // (NOT from inputs) so the orchestrator never has the chance to forget,
     // override, or be tricked into leaking cross-tenant data.
+      dbg('resolution.executeOne', {
+      tool: task.toolName,
+      taskId: task.id,
+      orgInToolCtx: peekOrg(toolExecCtx.requestContext),
+      toolCtxKeys: Object.keys(toolExecCtx),
+    });
     const output = await tool.execute(inputs, toolExecCtx);
     const durationMs = Date.now() - t0;
     logger.log(
@@ -221,6 +244,17 @@ export const resolutionStep = createStep({
   execute: async ({ inputData, requestContext, writer }) => {
     const state = inputData as DagState;
     const graph = state.taskGraph ?? [];
+    dbg('resolution.step.enter', {
+      hasRequestContext: !!requestContext,
+      requestContextType: requestContext
+        ? (requestContext as { constructor?: { name?: string } }).constructor
+            ?.name ?? typeof requestContext
+        : null,
+      orgAtStep: peekOrg(requestContext),
+      iteration: state.iteration,
+      graphLen: graph.length,
+      tools: graph.map((g) => g.toolName),
+    });
     if (state.isComplete || graph.length === 0) {
       return {
         ...state,
