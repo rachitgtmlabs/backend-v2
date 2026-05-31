@@ -22,7 +22,7 @@ export class TaskAlert {
   property_id: string;
 
   /** Main lease id (les_*). Null when task is created before a lease is attached. */
-  @Prop({ required: false, index: true, default: null })
+  @Prop({ type: String, required: false, index: true, default: null })
   lease_id: string | null;
 
   /**

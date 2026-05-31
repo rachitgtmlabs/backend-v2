@@ -23,7 +23,7 @@ export class PropertyAlert {
   @Prop({ required: true, index: true })
   property_id: string;
 
-  @Prop({ required: false, index: true, default: null })
+  @Prop({ type: String, required: false, index: true, default: null })
   lease_id: string | null;
 
   /**
