@@ -343,7 +343,8 @@ export class TasksAlertsService {
   }
 
   /**
-   * Sample rows for a newly saved lease (vault Tasks tab).
+   * Seed initial alerts for a newly saved lease. Currently disabled to allow
+   * users to create custom alerts from lease analysis instead.
    */
   async seedForNewLease(
     portfolioId: string,
@@ -351,51 +352,6 @@ export class TasksAlertsService {
     leaseId: string,
     unitId: string | null = null,
   ): Promise<void> {
-    const alertSeeds: Array<{
-      severity: TaskAlertSeverity;
-      title: string;
-      sortOrder: number;
-      details?: string;
-    }> = [
-      {
-        severity: 'high',
-        sortOrder: 0,
-        title:
-          'Reconcile CAM pool definitions and caps against the landlord annual expense statement before the audit deadline.',
-      },
-      {
-        severity: 'medium',
-        sortOrder: 1,
-        title:
-          'Confirm whether the expense stop applies to controllable CAM only and matches any letter of intent.',
-      },
-      {
-        severity: 'low',
-        sortOrder: 2,
-        title:
-          'Track reconciliation delivery timing — many leases allow 120–180 days after fiscal year-end.',
-      },
-      {
-        severity: 'medium',
-        sortOrder: 3,
-        title:
-          'Verify gross-up and vacancy assumptions used for CAM allocations match lease formulas.',
-      },
-    ];
-
-    await this.propertyAlertModel.insertMany(
-      alertSeeds.map((s) => ({
-        itemId: newAlertItemId(),
-        portfolio_id: portfolioId,
-        property_id: propertyId,
-        lease_id: leaseId,
-        unit_id: unitId,
-        title: s.title,
-        severity: s.severity,
-        sortOrder: s.sortOrder,
-        is_resolved: false,
-        ...(s.details ? { details: s.details } : {}),
-      })),
-    );
+    // Alerts are now user-created via lease analysis instead of auto-seeded
   }
 }
