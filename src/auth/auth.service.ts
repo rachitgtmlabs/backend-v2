@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
 import { RegisterDto } from './dto/register.dto';
+import { PasswordCryptoService } from './password-crypto.service';
 
 type SafeUser = Omit<Record<string, unknown>, 'password'> & {
   _id: unknown;
@@ -31,8 +32,22 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private organizationsService: OrganizationsService,
+    private passwordCrypto: PasswordCryptoService,
   ) {
     this.initializeFirebase();
+  }
+
+  /** Enforce password strength on the decrypted plaintext (see RegisterDto). */
+  private assertPasswordStrength(plaintext: string) {
+    if (
+      plaintext.length < 8 ||
+      plaintext.length > 128 ||
+      !/^(?=.*[A-Za-z])(?=.*\d).+$/.test(plaintext)
+    ) {
+      throw new BadRequestException(
+        'Password must be 8-128 characters and contain at least one letter and one number',
+      );
+    }
   }
 
   private initializeFirebase() {
@@ -72,7 +87,9 @@ export class AuthService {
   async validateUser(email: string, pass: string): Promise<SafeUser | null> {
     const user = await this.usersService.findByEmail(email);
     if (!user || !user.password) return null;
-    const matches = await bcrypt.compare(pass, user.password);
+    // `pass` arrives RSA-OAEP encrypted from the browser; decrypt before compare.
+    const plaintext = this.passwordCrypto.decrypt(pass);
+    const matches = await bcrypt.compare(plaintext, user.password);
     if (!matches) return null;
     const { password: _password, ...result } = user.toObject();
     void _password;
@@ -118,7 +135,11 @@ export class AuthService {
     if (existingUser) {
       throw new BadRequestException('User already exists');
     }
-    const hashedPassword = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
+    // Decrypt the RSA-OAEP transport ciphertext, validate strength on the
+    // plaintext, then bcrypt-hash it for storage.
+    const plaintext = this.passwordCrypto.decrypt(userData.password);
+    this.assertPasswordStrength(plaintext);
+    const hashedPassword = await bcrypt.hash(plaintext, BCRYPT_ROUNDS);
     const user = await this.usersService.create({
       ...userData,
       password: hashedPassword,

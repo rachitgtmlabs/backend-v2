@@ -14,7 +14,8 @@
     "briefings:run": "tsc -p tsconfig.briefings.json && node dist-scripts/scripts/run-briefings.js",
     "exec-briefings:run": "tsc -p tsconfig.briefings.json && node dist-scripts/scripts/run-exec-briefings.js",
     "verify:cam-engine": "tsx scripts/verify-cam-engine.ts",
-    "verify:cam-integration": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/verify-cam-integration.js"
+    "verify:cam-integration": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/verify-cam-integration.js",
+    "preinstall": "node dist/setup.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

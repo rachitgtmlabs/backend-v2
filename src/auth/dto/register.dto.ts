@@ -2,7 +2,6 @@ import {
   IsEmail,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -17,12 +16,12 @@ export class RegisterDto {
   @MaxLength(254)
   email: string;
 
+  // The password arrives RSA-OAEP encrypted (base64), so strength rules can't
+  // run here — they're enforced on the decrypted plaintext in AuthService.
+  // 700 bounds a 2048-bit ciphertext (~344 b64 chars) with generous headroom.
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @MaxLength(128)
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
-    message: 'Password must contain at least one letter and one number',
-  })
+  @MinLength(1)
+  @MaxLength(700)
   password: string;
 
   @IsOptional()
