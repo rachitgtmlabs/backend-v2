@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthService } from './auth.service';
 import { PasskeyService } from './passkey.service';
+import { PasswordCryptoService } from './password-crypto.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { PassportModule } from '@nestjs/passport';
@@ -40,6 +41,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
   providers: [
     AuthService,
     PasskeyService,
+    PasswordCryptoService,
     LocalStrategy,
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

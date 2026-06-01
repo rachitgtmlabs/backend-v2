@@ -10,6 +10,7 @@ import {
 import { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { PasskeyService } from './passkey.service';
+import { PasswordCryptoService } from './password-crypto.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
@@ -25,11 +26,29 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private passkeyService: PasskeyService,
+    private passwordCrypto: PasswordCryptoService,
   ) {}
+
+  /**
+   * Public RSA public key (SPKI PEM) the browser uses to encrypt the password
+   * before sending it on signup/login, so the plaintext never hits the wire.
+   */
+  @Public()
+  @Get('public-key')
+  getPublicKey() {
+    return { publicKey: this.passwordCrypto.getPublicKeyPem() };
+  }
 
   @Public()
   @Post('register')
   async register(@Body() userData: RegisterDto) {
+    return this.authService.register(userData);
+  }
+
+  // Alias so the frontend's POST /v1/auth/signup resolves to the same logic.
+  @Public()
+  @Post('signup')
+  async signup(@Body() userData: RegisterDto) {
     return this.authService.register(userData);
   }
 
